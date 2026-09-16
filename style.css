@@ -205,3 +205,20 @@ body.lightTheme .syncing{color:#9b7100}body.lightTheme .ok{color:#15966d}body.li
 .chartTools label{font-size:12px;color:#8793aa;display:flex;align-items:center;gap:6px}
 .chartTools select{font:inherit;color:inherit;background:transparent;border:1px solid #445066;border-radius:8px;padding:5px 8px}
 @media (max-width:600px){.chartTools{margin:-32px 0 8px}.chartTools select{max-width:130px}}
+
+/* Ver8.36: 台別統計の表示順。ワイドは3列×2行、狭い画面は2列×3行。 */
+.machineDetailStats{grid-template-areas:
+  "invest maxwin avg"
+  "return maxloss winrate";}
+.machineDetailStats .stat-invest{grid-area:invest}
+.machineDetailStats .stat-maxwin{grid-area:maxwin}
+.machineDetailStats .stat-avg{grid-area:avg}
+.machineDetailStats .stat-return{grid-area:return}
+.machineDetailStats .stat-maxloss{grid-area:maxloss}
+.machineDetailStats .stat-winrate{grid-area:winrate}
+@media(max-width:650px){
+  .machineDetailStats{grid-template-areas:
+    "invest return"
+    "maxwin maxloss"
+    "avg winrate";}
+}

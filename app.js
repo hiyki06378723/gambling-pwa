@@ -27,7 +27,7 @@ const STORE_DATA_KEY="gambling-store-data-v1";
 const STORE_CUSTOM_KEY="gambling-store-custom-v1";
 let STORE_DATA={stores:[]};
 
-const APP_VERSION="8.35.3";
+const APP_VERSION="8.36";
 
 function loadMachineData(){
   try{
@@ -307,27 +307,26 @@ function renderStatsList(es){
  $("#statsList").innerHTML=list.length?list.map(e=>`<div class="entryCard"><div class="entryTop"><div><b>${escapeHtml(e.machine)}</b><small>${formatDateJP(e.date)} ・ ${escapeHtml(e.genre)} ・ ${e.rate?e.rate+"円":""}</small></div><strong class="${rawNet(e)>=0?"pos":"neg"}">${yen(rawNet(e))}</strong></div><div class="smallText">投資 ${displayMoneyOrUnit(e.investType,e.invest,e.genre,e.rate)} / 回収 ${displayMoneyOrUnit(e.returnType,e.return,e.genre,e.rate)}</div>${e.memo?`<p class="memo">${escapeHtml(e.memo)}</p>`:""}<div class="entryActions"><button onclick="editEntry('${e.id}')">編集</button><button class="danger" onclick="deleteById('${e.id}')">削除</button></div></div>`).join(""):"<p class='neutral'>データがありません</p>";
 }
 function updateAnalysisTargetOptions(es,group){const sel=$("#analysisTarget");if(!sel)return;const needs=group==="machine"||group==="genre"||group==="store";sel.classList.toggle("hiddenField",!needs);if(!needs){sel.innerHTML='<option value="">対象を選択</option>';return;}let vals;if(group==="store")vals=[...new Set(es.map(e=>e.store).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"ja"));else{const key=group==="machine"?"machine":"genre";vals=[...new Set(es.map(e=>e[key]).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"ja"));}const prev=sel.value;sel.innerHTML='<option value="">対象を選択してください</option>'+vals.map(v=>`<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");if(vals.includes(prev))sel.value=prev;else if(vals.length===1)sel.value=vals[0];}
-function machineCard(key,es){let n=es.map(rawNet),wins=n.filter(x=>x>0).length,invest=es.reduce((a,e)=>a+invYen(e),0),ret=es.reduce((a,e)=>a+retYen(e),0),sum=n.reduce((a,x)=>a+x,0);let avg=es.length?sum/es.length:0,max=Math.max(...n,0),min=Math.min(...n,0);return `<div class="machineCard"><h3>${escapeHtml(key)}</h3><div class="statsGrid"><div><span>最高勝ち額</span><b class="pos">${yen(max)}</b></div><div><span>総投資</span><b>${yen(invest)}</b></div><div><span>平均収支</span><b class="${avg>=0?"pos":"neg"}">${yen(avg)}</b></div><div><span>最高負け額</span><b class="neg">${yen(min)}</b></div><div><span>総回収</span><b>${yen(ret)}</b></div><div><span>勝率</span><b>${es.length?(wins/es.length*100).toFixed(1):0}%</b></div></div></div>`}
+function machineCard(key,es){let n=es.map(rawNet),wins=n.filter(x=>x>0).length,invest=es.reduce((a,e)=>a+invYen(e),0),ret=es.reduce((a,e)=>a+retYen(e),0),sum=n.reduce((a,x)=>a+x,0);let avg=es.length?sum/es.length:0,max=Math.max(...n,0),min=Math.min(...n,0);return `<div class="machineCard"><h3>${escapeHtml(key)}</h3><div class="statsGrid machineDetailStats"><div class="stat-invest"><span>総投資</span><b>${yen(invest)}</b></div><div class="stat-maxwin"><span>最高勝ち額</span><b class="pos">${yen(max)}</b></div><div class="stat-avg"><span>平均収支</span><b class="${avg>=0?"pos":"neg"}">${yen(avg)}</b></div><div class="stat-return"><span>総回収</span><b>${yen(ret)}</b></div><div class="stat-maxloss"><span>最高負け額</span><b class="neg">${yen(min)}</b></div><div class="stat-winrate"><span>勝率</span><b>${es.length?(wins/es.length*100).toFixed(1):0}%</b></div></div></div>`}
 function periodSeries(es,r,type,mode="calendar",valueFn=net){
- // 表示単位（横軸ラベル）とデータ粒度を分離。通常表示は期間内の全日、連続表示は記録日のみを描画する。
+ // 投資・回収を円換算して、開始時点を0円にした累積キャッシュフローを描画する。
  if(!r||!r[0]||!r[1]||!es.length)return [];
- const map={};es.forEach(e=>map[e.date]=(map[e.date]||0)+valueFn(e));
+ const map={};es.forEach(e=>map[e.date]=(map[e.date]||0)+((typeof valueFn==="function")?valueFn(e):(retYen(e)-invYen(e))));
  const start=parseDate(r[0]),end=parseDate(r[1]);
  let dates=[];
- if(mode==="continuous"){
-   dates=[...new Set(es.map(e=>e.date).filter(Boolean))].sort();
- }else{
-   for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1))dates.push(dateKey(d));
- }
+ if(mode==="continuous") dates=[...new Set(es.map(e=>e.date).filter(Boolean))].sort();
+ else for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1))dates.push(dateKey(d));
  let cum=0;
- return dates.map(k=>{
+ const out=[{label:"開始",value:0,date:null,tickUnit:type}];
+ dates.forEach(k=>{
    cum+=map[k]||0;
    const d=parseDate(k);
    let label=`${d.getDate()}日`;
    if(type==="year") label=d.getDate()===1?`${d.getMonth()+1}月`:"";
    if(type==="all") label=d.getDate()===1&&d.getMonth()===0?`${d.getFullYear()}年`:"";
-   return {label,value:cum,date:k,tickUnit:type};
+   out.push({label,value:cum,date:k,tickUnit:type});
  });
+ return out;
 }
 function chartScale(values){
  const maxValue=Math.max(0,...values),minValue=Math.min(0,...values);
