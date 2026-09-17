@@ -27,7 +27,7 @@ const STORE_DATA_KEY="gambling-store-data-v1";
 const STORE_CUSTOM_KEY="gambling-store-custom-v1";
 let STORE_DATA={stores:[]};
 
-const APP_VERSION="8.36";
+const APP_VERSION="8.36.1";
 
 function loadMachineData(){
   try{
@@ -309,37 +309,43 @@ function renderStatsList(es){
 function updateAnalysisTargetOptions(es,group){const sel=$("#analysisTarget");if(!sel)return;const needs=group==="machine"||group==="genre"||group==="store";sel.classList.toggle("hiddenField",!needs);if(!needs){sel.innerHTML='<option value="">対象を選択</option>';return;}let vals;if(group==="store")vals=[...new Set(es.map(e=>e.store).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"ja"));else{const key=group==="machine"?"machine":"genre";vals=[...new Set(es.map(e=>e[key]).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"ja"));}const prev=sel.value;sel.innerHTML='<option value="">対象を選択してください</option>'+vals.map(v=>`<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");if(vals.includes(prev))sel.value=prev;else if(vals.length===1)sel.value=vals[0];}
 function machineCard(key,es){let n=es.map(rawNet),wins=n.filter(x=>x>0).length,invest=es.reduce((a,e)=>a+invYen(e),0),ret=es.reduce((a,e)=>a+retYen(e),0),sum=n.reduce((a,x)=>a+x,0);let avg=es.length?sum/es.length:0,max=Math.max(...n,0),min=Math.min(...n,0);return `<div class="machineCard"><h3>${escapeHtml(key)}</h3><div class="statsGrid machineDetailStats"><div class="stat-invest"><span>総投資</span><b>${yen(invest)}</b></div><div class="stat-maxwin"><span>最高勝ち額</span><b class="pos">${yen(max)}</b></div><div class="stat-avg"><span>平均収支</span><b class="${avg>=0?"pos":"neg"}">${yen(avg)}</b></div><div class="stat-return"><span>総回収</span><b>${yen(ret)}</b></div><div class="stat-maxloss"><span>最高負け額</span><b class="neg">${yen(min)}</b></div><div class="stat-winrate"><span>勝率</span><b>${es.length?(wins/es.length*100).toFixed(1):0}%</b></div></div></div>`}
 function periodSeries(es,r,type,mode="calendar",valueFn=net){
- // 投資・回収を円換算して、開始時点を0円にした累積キャッシュフローを描画する。
- if(!r||!r[0]||!r[1]||!es.length)return [];
- const map={};es.forEach(e=>map[e.date]=(map[e.date]||0)+((typeof valueFn==="function")?valueFn(e):(retYen(e)-invYen(e))));
- const start=parseDate(r[0]),end=parseDate(r[1]);
- let dates=[];
- if(mode==="continuous") dates=[...new Set(es.map(e=>e.date).filter(Boolean))].sort();
- else for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1))dates.push(dateKey(d));
+ // 収支推移：開始点を0円にし、各記録について「投資→回収」の順で累積する。
+ // 投資・回収は現金/持ち玉を円換算した値を使うため、途中経過も実際の資金移動に沿って表示する。
+ if(!r||!r[0]||!r[1])return [];
+ const filtered=es.filter(e=>e&&e.date&&inPeriod(e,r)).slice().sort((a,b)=>a.date.localeCompare(b.date));
+ if(!filtered.length)return [];
+ const groups={};
+ filtered.forEach(e=>(groups[e.date]??=[]).push(e));
+ let dates;
+ if(mode==="continuous") dates=[...new Set(filtered.map(e=>e.date))].sort();
+ else{
+   const start=parseDate(r[0]),end=parseDate(r[1]);
+   dates=[];
+   for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1))dates.push(dateKey(d));
+ }
  let cum=0;
  const out=[{label:"開始",value:0,date:null,tickUnit:type}];
  dates.forEach(k=>{
-   cum+=map[k]||0;
-   const d=parseDate(k);
-   let label=`${d.getDate()}日`;
-   if(type==="year") label=d.getDate()===1?`${d.getMonth()+1}月`:"";
-   if(type==="all") label=d.getDate()===1&&d.getMonth()===0?`${d.getFullYear()}年`:"";
-   out.push({label,value:cum,date:k,tickUnit:type});
+   const day=groups[k]||[];
+   day.forEach((e,idx)=>{
+     const inv=invYen(e),ret=retYen(e);
+     // 投資で一度下がり、その後の回収で上がる動きを明示する。
+     if(inv){cum-=inv;out.push({label:"",value:cum,date:k,tickUnit:type,phase:"invest"});}
+     if(ret){cum+=ret;out.push({label:idx===day.length-1?periodLabelFor(k,type):"",value:cum,date:k,tickUnit:type,phase:"return"});}
+     if(!inv&&!ret)out.push({label:idx===day.length-1?periodLabelFor(k,type):"",value:cum,date:k,tickUnit:type,phase:"none"});
+   });
+   // 通常表示では記録のない日も軸上に残す。記録がある日は上の投資/回収点を使用する。
+   if(!day.length && mode!=="continuous")out.push({label:periodLabelFor(k,type),value:cum,date:k,tickUnit:type,phase:"empty"});
  });
  return out;
 }
-function chartScale(values){
- const maxValue=Math.max(0,...values),minValue=Math.min(0,...values);
- const rawRange=maxValue-minValue;
- const steps=[10000,20000,50000,100000,200000,500000,1000000];
- const step=steps.find(x=>rawRange<=x*8)||1000000;
- let min=Math.floor(minValue/step)*step,max=Math.ceil(maxValue/step)*step;
- if(min===max){min-=step;max+=step;}
- // 上端・下端の値がぴったり境界に来る場合は1段分余白を作り、線や文字が見切れないようにする。
- if(max===maxValue)max+=step;
- if(min===minValue)min-=step;
- return {min,max,step};
+function periodLabelFor(k,type){
+ const d=parseDate(k);
+ if(type==="year") return d.getDate()===1?`${d.getMonth()+1}月`:"";
+ if(type==="all") return d.getDate()===1&&d.getMonth()===0?`${d.getFullYear()}年`:"";
+ return `${d.getMonth()+1}/${d.getDate()}`;
 }
+
 function drawChart(canvas,data){
  if(!canvas)return;
  const dpr=2,cssW=Math.max(canvas.clientWidth||600,280),h=250;
