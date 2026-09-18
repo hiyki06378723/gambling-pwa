@@ -27,7 +27,7 @@ const STORE_DATA_KEY="gambling-store-data-v1";
 const STORE_CUSTOM_KEY="gambling-store-custom-v1";
 let STORE_DATA={stores:[]};
 
-const APP_VERSION="8.36.2";
+const APP_VERSION="8.36.6";
 
 function loadMachineData(){
   try{
@@ -218,17 +218,18 @@ function escapeHtml(s=""){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","
 function formatDateJP(s){return s.replace(/-/g,"/")}
 function renderAll(){renderCalendar();renderReport();renderStats()}
 function renderMonthJump(){
- const sel=$("#monthJump");
+ const sel=$("#monthTitle");
  if(!sel)return;
  const months=[...new Set(entries.map(e=>e.date).filter(Boolean).map(d=>d.slice(0,7)))].sort().reverse();
  const current=`${viewDate.getFullYear()}-${String(viewDate.getMonth()+1).padStart(2,"0")}`;
- sel.innerHTML=months.length?months.map(v=>{const [yy,mm]=v.split("-");return `<option value="${v}">${yy}年${Number(mm)}月</option>`}).join(""): `<option value="${current}">${viewDate.getFullYear()}年${viewDate.getMonth()+1}月</option>`;
- sel.value=months.includes(current)?current:current;
+ const list=months.length?months:[current];
+ if(!list.includes(current))list.push(current);
+ sel.innerHTML=list.map(v=>{const [yy,mm]=v.split("-");return `<option value="${v}">${yy}年${Number(mm)}月</option>`}).join("");
+ sel.value=current;
 }
 
 function renderCalendar(){
  const y=viewDate.getFullYear(),m=viewDate.getMonth();
- $("#monthTitle").textContent=`${y}年${m+1}月`;
  renderMonthJump();
  const first=new Date(y,m,1).getDay(),last=new Date(y,m+1,0).getDate(),map={}; entries.forEach(e=>(map[e.date]??=[]).push(e));
  let html="";for(let i=0;i<first;i++)html+='<div class="empty"></div>';
@@ -317,7 +318,48 @@ function renderStatsList(es){
  });
  $("#statsList").innerHTML=list.length?list.map(e=>`<div class="entryCard"><div class="entryTop"><div><b>${escapeHtml(e.machine)}</b><small>${formatDateJP(e.date)} ・ ${escapeHtml(e.genre)} ・ ${e.rate?e.rate+"円":""}</small></div><strong class="${rawNet(e)>=0?"pos":"neg"}">${yen(rawNet(e))}</strong></div><div class="smallText">投資 ${displayMoneyOrUnit(e.investType,e.invest,e.genre,e.rate)} / 回収 ${displayMoneyOrUnit(e.returnType,e.return,e.genre,e.rate)}</div>${e.memo?`<p class="memo">${escapeHtml(e.memo)}</p>`:""}<div class="entryActions"><button onclick="editEntry('${e.id}')">編集</button><button class="danger" onclick="deleteById('${e.id}')">削除</button></div></div>`).join(""):"<p class='neutral'>データがありません</p>";
 }
-function updateAnalysisTargetOptions(es,group){const sel=$("#analysisTarget");if(!sel)return;const needs=group==="machine"||group==="genre"||group==="store";sel.classList.toggle("hiddenField",!needs);if(!needs){sel.innerHTML='<option value="">対象を選択</option>';return;}let vals;if(group==="store")vals=[...new Set(es.map(e=>e.store).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"ja"));else{const key=group==="machine"?"machine":"genre";vals=[...new Set(es.map(e=>e[key]).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"ja"));}const prev=sel.value;sel.innerHTML='<option value="">対象を選択してください</option>'+vals.map(v=>`<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");if(vals.includes(prev))sel.value=prev;else if(vals.length===1)sel.value=vals[0];}
+function updateAnalysisTargetOptions(es,group){
+ const sel=$("#analysisTarget");if(!sel)return;
+ const needs=group==="machine"||group==="genre"||group==="store";
+ sel.classList.toggle("hiddenField",!needs);
+ if(!needs){sel.innerHTML='<option value="">対象を選択</option>';return;}
+ const prev=sel.value;
+ if(group==="store"){
+   const counts=new Map();
+   es.map(e=>e.store).filter(Boolean).forEach(v=>counts.set(v,(counts.get(v)||0)+1));
+   const vals=[...counts.entries()].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"ja"));
+   sel.innerHTML='<option value="">対象を選択してください</option>'+vals.map(([v])=>`<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
+   if(vals.some(([v])=>v===prev))sel.value=prev;else if(vals.length===1)sel.value=vals[0];
+   return;
+ }
+ if(group==="machine"){
+   const genreOrder=["パチスロ","パチンコ"];
+   const byGenre=new Map();
+   for(const e of es){
+     if(!e.machine)continue;
+     const genre=genreOrder.includes(e.genre)?e.genre:"その他";
+     if(!byGenre.has(genre))byGenre.set(genre,new Map());
+     const m=byGenre.get(genre);m.set(e.machine,(m.get(e.machine)||0)+1);
+   }
+   const extra=[...byGenre.keys()].filter(g=>!genreOrder.includes(g)).sort((a,b)=>a.localeCompare(b,"ja"));
+   const genres=[...genreOrder,...extra];
+   let html='<option value="">対象を選択してください</option>';
+   for(const genre of genres){
+     const counts=byGenre.get(genre);if(!counts||!counts.size)continue;
+     const vals=[...counts.entries()].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"ja"));
+     html+=`<optgroup label="ー${escapeHtml(genre)}ー">`+vals.map(([v])=>`<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("")+"</optgroup>";
+   }
+   sel.innerHTML=html;
+   const all=[...byGenre.values()].flatMap(m=>[...m.keys()]);
+   if(all.includes(prev))sel.value=prev;else if(all.length===1)sel.value=all[0];
+   return;
+ }
+ const counts=new Map();
+ es.map(e=>e.genre).filter(Boolean).forEach(v=>counts.set(v,(counts.get(v)||0)+1));
+ const vals=[...counts.entries()].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"ja"));
+ sel.innerHTML='<option value="">対象を選択してください</option>'+vals.map(([v])=>`<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
+ if(vals.some(([v])=>v===prev))sel.value=prev;else if(vals.length===1)sel.value=vals[0];
+}
 function machineCard(key,es){let n=es.map(rawNet),wins=n.filter(x=>x>0).length,invest=es.reduce((a,e)=>a+invYen(e),0),ret=es.reduce((a,e)=>a+retYen(e),0),sum=n.reduce((a,x)=>a+x,0);let avg=es.length?sum/es.length:0,max=Math.max(...n,0),min=Math.min(...n,0);return `<div class="machineCard"><h3>${escapeHtml(key)}</h3><div class="statsGrid machineDetailStats"><div class="stat-invest"><span>総投資</span><b>${yen(invest)}</b></div><div class="stat-maxwin"><span>最高勝ち額</span><b class="pos">${yen(max)}</b></div><div class="stat-avg"><span>平均収支</span><b class="${avg>=0?"pos":"neg"}">${yen(avg)}</b></div><div class="stat-return"><span>総回収</span><b>${yen(ret)}</b></div><div class="stat-maxloss"><span>最高負け額</span><b class="neg">${yen(min)}</b></div><div class="stat-winrate"><span>勝率</span><b>${es.length?(wins/es.length*100).toFixed(1):0}%</b></div></div></div>`}
 function periodSeries(es,r,type,mode="calendar",valueFn=net){
  // 収支推移：開始点を0円にし、各記録について「投資→回収」の順で累積する。
@@ -428,7 +470,7 @@ function importBackup(file){
   reader.onload=()=>{try{const data=JSON.parse(reader.result);if(!Array.isArray(data.entries))throw new Error("収支データがありません");if(!confirm("現在の収支データをバックアップ内容で置き換えますか？"))return;entries=data.entries;localStorage.setItem(KEY,JSON.stringify(entries));if(data.machineData?.パチスロ&&data.machineData?.パチンコ){MACHINE_DATA.パチスロ=data.machineData.パチスロ;MACHINE_DATA.パチンコ=data.machineData.パチンコ;localStorage.setItem(MACHINE_DATA_KEY,JSON.stringify(MACHINE_DATA));}renderAll();alert("バックアップを復元しました");}catch(e){alert("バックアップの読み込みに失敗しました");}};reader.readAsText(file);
 }
 
-function recentMachines(){return [...new Set(entries.slice().sort((a,b)=>b.date.localeCompare(a.date)).map(e=>e.machine).filter(Boolean))].slice(0,6)}
+function recentMachines(genre){return [...new Set(entries.slice().sort((a,b)=>b.date.localeCompare(a.date)).filter(e=>!genre||e.genre===genre).map(e=>e.machine).filter(Boolean))].slice(0,6)}
 function machineOptions(genre,filter=""){const q=filter.trim().toLowerCase();return [...new Set((MACHINE_DATA[genre]||[]).filter(x=>x.toLowerCase().includes(q)))]}
 function rowMachinePickerHtml(i){return `<div class="machinePicker"><div class="machineSearchRow"><input class="rowSearch" data-row="${i}" placeholder="機種名を検索…" autocomplete="off"><button type="button" class="clearRowSearch" data-row="${i}">×</button></div><div class="machineSuggestions" data-row="${i}"></div><select class="rowMachine hiddenField" data-row="${i}"><option value="">機種を選択してください</option></select><div class="recentLabel">最近使った機種</div><div class="rowRecent recentMachines" data-row="${i}"></div><button type="button" class="ghost full customRowBtn" data-row="${i}">機種リストにない場合は手入力</button><input class="rowCustom hiddenField" data-row="${i}" placeholder="機種名を入力"></div>`}
 function rateOptionsHtml(genre,current){const rates=RATE_OPTIONS[genre]||[];return rates.map(r=>`<option value="${r}" ${Number(current)===r?'selected':''}>${r}円</option>`).join('')}
@@ -440,7 +482,7 @@ function addEntryRow(data={}){
  const hasInvest=Object.prototype.hasOwnProperty.call(data,'invest'), hasReturn=Object.prototype.hasOwnProperty.call(data,'return');
  const investInput0=hasInvest?(investType0==='cash'?cashInputValue(data.invest):Number(data.invest??0)):'';
  const returnInput0=hasReturn?(returnType0==='cash'?cashInputValue(data.return):Number(data.return??0)):'';
- div.innerHTML=`<div class="rowHead"><h3>機種 ${wrap.children.length+1}</h3><button type="button" class="removeRow danger" data-row="${i}">削除</button></div><label>ジャンル<select class="rowGenre" data-row="${i}"><option>パチスロ</option><option>パチンコ</option><option>競馬</option><option>競艇</option><option>その他</option></select></label><label>レート<select class="rowRate" data-row="${i}">${rateOptionsHtml(genre0,rate0)}</select></label>${storePickerHtml()}<label>機種・対象</label>${rowMachinePickerHtml(i)}<div class="two"><label>投資<select class="rowInvestType"><option value="cash">現金（千円）</option><option value="hold">持ち玉（${unitFor(genre0)}）</option></select><input class="rowInvest" data-row="${i}" type="number" min="0" step="${inputStep(investType0)}" placeholder="${inputPlaceholder(investType0)}" value="${investInput0}" required></label><label>回収<select class="rowReturnType"><option value="cash">現金（千円）</option><option value="hold">持ち玉（${unitFor(genre0)}）</option></select><input class="rowReturn" data-row="${i}" type="number" min="0" step="${inputStep(returnType0)}" placeholder="${inputPlaceholder(returnType0)}" value="${returnInput0}" required></label></div><button type="button" class="ghost full carryBtn">← 前の機種の持ち玉を引き継ぐ</button><label>メモ<textarea class="rowMemo" data-row="${i}" rows="2">${escapeHtml(data.memo||"")}</textarea><div class="netPreview">収支（円換算） <strong class="rowNet" data-row="${i}">¥0</strong><small class="rowUnitPreview"></small></div>`;
+ div.innerHTML=`<div class="rowHead"><div><span class="entryRowKicker">入力 ${wrap.children.length+1}</span><h3>機種 ${wrap.children.length+1}</h3></div><button type="button" class="removeRow danger" data-row="${i}">削除</button></div><section class="entrySection storeSection"><div class="entrySectionTitle"><span>🏪</span><b>店舗</b><small>どこで遊技したか</small></div>${storePickerHtml()}</section><section class="entrySection conditionSection"><div class="entrySectionTitle"><span>🎰</span><b>遊技条件</b><small>ジャンル・レート</small></div><label>ジャンル<select class="rowGenre" data-row="${i}"><option>パチスロ</option><option>パチンコ</option><option>競馬</option><option>競艇</option><option>その他</option></select></label><label>レート<select class="rowRate" data-row="${i}">${rateOptionsHtml(genre0,rate0)}</select></label></section><section class="entrySection machineSection"><div class="entrySectionTitle"><span>🎮</span><b>機種</b><small>対象を選択</small></div>${rowMachinePickerHtml(i)}</section><section class="entrySection moneySection"><div class="entrySectionTitle"><span>💰</span><b>収支情報</b><small>投資・回収</small></div><div class="two"><label>投資<select class="rowInvestType"><option value="cash">現金（千円）</option><option value="hold">持ち玉（${unitFor(genre0)}）</option></select><input class="rowInvest" data-row="${i}" type="number" min="0" step="${inputStep(investType0)}" placeholder="${inputPlaceholder(investType0)}" value="${investInput0}" required></label><label>回収<select class="rowReturnType"><option value="cash">現金（千円）</option><option value="hold">持ち玉（${unitFor(genre0)}）</option></select><input class="rowReturn" data-row="${i}" type="number" min="0" step="${inputStep(returnType0)}" placeholder="${inputPlaceholder(returnType0)}" value="${returnInput0}" required></label></div><button type="button" class="ghost full carryBtn">← 前の機種の持ち玉を引き継ぐ</button><div class="netPreview">収支（円換算） <strong class="rowNet" data-row="${i}">¥0</strong><small class="rowUnitPreview"></small></div></section><section class="entrySection memoSection"><div class="entrySectionTitle"><span>📝</span><b>メモ</b><small>任意</small></div><label>メモ<textarea class="rowMemo" data-row="${i}" rows="2">${escapeHtml(data.memo||"")}</textarea></label></section>`;
  wrap.appendChild(div);
  fillStorePicker(div,data);
  const genre=div.querySelector('.rowGenre'),rate=div.querySelector('.rowRate'),investType=div.querySelector('.rowInvestType'),returnType=div.querySelector('.rowReturnType');genre.value=genre0;investType.value=data.investType||'cash';returnType.value=data.returnType||'cash';
@@ -481,7 +523,7 @@ function addEntryRow(data={}){
  updateRowPreview(div);updateBatchTotal();
 }
 function renderRowRecent(div){
- const wrap=div.querySelector('.recentMachines'),rs=recentMachines();
+ const wrap=div.querySelector('.recentMachines'),rs=recentMachines(div.querySelector('.rowGenre')?.value);
  wrap.innerHTML=rs.length?rs.map(x=>`<button type="button" class="recentMachine" data-machine="${escapeHtml(x)}">${escapeHtml(x)}</button>`).join(""):'<span class="neutral">まだありません</span>';
  wrap.querySelectorAll('.recentMachine').forEach(b=>b.onclick=()=>{
    const value=b.dataset.machine;
@@ -571,9 +613,10 @@ $("#entryForm").onsubmit=e=>{
 };
 $("#deleteEntry").onclick=()=>{if(editingId&&confirm('この記録を削除しますか？')){entries=entries.filter(e=>e.id!==editingId);$("#entryDialog").close();save()}};
 $("#cancelDialog").onclick=$("#closeDialog").onclick=()=>$("#entryDialog").close();
-$("#prevMonth").onclick=()=>{viewDate.setMonth(viewDate.getMonth()-1);renderCalendar()};$("#nextMonth").onclick=()=>{viewDate.setMonth(viewDate.getMonth()+1);renderCalendar()};$("#todayBtn").onclick=()=>{viewDate=new Date();renderCalendar()};
-$("#monthTitle").onclick=()=>{const sel=$("#monthJump");if(!sel)return; if(typeof sel.showPicker==="function")sel.showPicker();else sel.focus();};
-$("#monthJump").onchange=()=>{const [y,m]=$("#monthJump").value.split("-").map(Number);if(y&&m){viewDate=new Date(y,m-1,1);renderCalendar()}};
+$("#prevMonth").onclick=()=>{viewDate.setMonth(viewDate.getMonth()-1);renderCalendar()};
+$("#nextMonth").onclick=()=>{viewDate.setMonth(viewDate.getMonth()+1);renderCalendar()};
+$("#monthTitle").onchange=()=>{const v=$("#monthTitle").value;if(v){const [yy,mm]=v.split("-").map(Number);viewDate=new Date(yy,mm-1,1);renderCalendar()}};
+$("#todayBtn").onclick=()=>{viewDate=new Date();renderCalendar()};
 $("#reportPrev").onclick=()=>{reportDate.setDate(reportDate.getDate()-1);renderReport()};$("#reportNext").onclick=()=>{reportDate.setDate(reportDate.getDate()+1);renderReport()};
 $("#period").onchange=()=>{updatePeriodControls();renderStats()};$("#periodMonth").onchange=renderStats;$("#periodYear").onchange=renderStats;$("#group").onchange=()=>{renderStats();};$("#analysisTarget").onchange=renderStats;$("#detailSort").onchange=renderStats;$("#chartMode").onchange=renderStats;
 $$('.tab').forEach(b=>b.onclick=()=>{switchPage(b.dataset.page);renderAll();if(b.dataset.page==='settings')updateMachineUpdatedUI()});

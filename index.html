@@ -21,7 +21,7 @@
 <main>
 <section id="calendarPage" class="page active">
   <div class="monthbar">
-    <button id="prevMonth">‹</button><button id="monthTitle" class="monthTitleButton" type="button" aria-label="記録のある月を選択"></button><button id="nextMonth">›</button><select id="monthJump" class="hiddenField" aria-label="記録のある月"></select>
+    <button id="prevMonth">‹</button><select id="monthTitle" class="monthTitleSelect" aria-label="記録のある月を選択"></select><button id="nextMonth">›</button>
   </div>
   <div class="summary">
     <div><span>月間収支</span><strong id="monthNet">¥0</strong></div>
@@ -126,7 +126,7 @@
 <input type="hidden" id="entryId" value="">
   <div class="dialogHead"><h2 id="dialogTitle">収支を入力</h2><button type="button" id="closeDialog">×</button></div>
   <div class="batchNotice">1日の記録をまとめて入力できます。「＋ 機種を追加」で複数機種を続けて登録できます。持ち玉は「前の機種の持ち玉を引き継ぐ」で次の機種へ渡せます。</div>
-  <label>日付<input id="entryDate" type="date" required></label>
+  <div class="entrySection entryDateSection"><div class="entrySectionTitle"><span>📅</span><b>記録日</b></div><label>日付<input id="entryDate" type="date" required></label></div>
   <div id="entryRows"></div>
   <button type="button" id="addEntryRow" class="ghost full addRowBtn">＋ 機種を追加</button>
   <div class="batchNori card">
