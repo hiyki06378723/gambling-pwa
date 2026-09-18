@@ -27,7 +27,7 @@ const STORE_DATA_KEY="gambling-store-data-v1";
 const STORE_CUSTOM_KEY="gambling-store-custom-v1";
 let STORE_DATA={stores:[]};
 
-const APP_VERSION="8.36.1";
+const APP_VERSION="8.36.2";
 
 function loadMachineData(){
   try{
@@ -217,8 +217,19 @@ function parseDate(s){const [y,m,d]=s.split("-").map(Number);return new Date(y,m
 function escapeHtml(s=""){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
 function formatDateJP(s){return s.replace(/-/g,"/")}
 function renderAll(){renderCalendar();renderReport();renderStats()}
+function renderMonthJump(){
+ const sel=$("#monthJump");
+ if(!sel)return;
+ const months=[...new Set(entries.map(e=>e.date).filter(Boolean).map(d=>d.slice(0,7)))].sort().reverse();
+ const current=`${viewDate.getFullYear()}-${String(viewDate.getMonth()+1).padStart(2,"0")}`;
+ sel.innerHTML=months.length?months.map(v=>{const [yy,mm]=v.split("-");return `<option value="${v}">${yy}年${Number(mm)}月</option>`}).join(""): `<option value="${current}">${viewDate.getFullYear()}年${viewDate.getMonth()+1}月</option>`;
+ sel.value=months.includes(current)?current:current;
+}
+
 function renderCalendar(){
- const y=viewDate.getFullYear(),m=viewDate.getMonth(); $("#monthTitle").textContent=`${y}年${m+1}月`;
+ const y=viewDate.getFullYear(),m=viewDate.getMonth();
+ $("#monthTitle").textContent=`${y}年${m+1}月`;
+ renderMonthJump();
  const first=new Date(y,m,1).getDay(),last=new Date(y,m+1,0).getDate(),map={}; entries.forEach(e=>(map[e.date]??=[]).push(e));
  let html="";for(let i=0;i<first;i++)html+='<div class="empty"></div>';
  let total=0,inv=0,wins=0,loss=0;
@@ -232,7 +243,7 @@ function renderCalendar(){
  $$("#calendar .day").forEach(b=>b.onclick=()=>{reportDate=parseDate(b.dataset.date);switchPage("report");renderReport()});
  drawChart($("#calendarChart"),dailySeries(y,m));
 }
-function dailySeries(y,m){let last=new Date(y,m+1,0).getDate(),map={};entries.forEach(e=>{if(e.date.startsWith(`${y}-${String(m+1).padStart(2,"0")}`))(map[e.date]??=[]).push(e)});let cum=0,a=[];for(let d=1;d<=last;d++){let k=`${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`,n=dayPersonalNet(map[k]||[]);cum+=n;a.push({label:d,value:cum})}return a}
+function dailySeries(y,m){let last=new Date(y,m+1,0).getDate(),map={};entries.forEach(e=>{if(e.date.startsWith(`${y}-${String(m+1).padStart(2,"0")}`))(map[e.date]??=[]).push(e)});let cum=0,a=[{label:"開始",value:0}];for(let d=1;d<=last;d++){let k=`${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`,n=dayPersonalNet(map[k]||[]);cum+=n;a.push({label:d,value:cum})}return a}
 function renderReport(){
  const key=dateKey(reportDate),es=entries.filter(e=>e.date===key),n=dayPersonalNet(es),inv=es.reduce((a,e)=>a+invYen(e),0),ret=es.reduce((a,e)=>a+retYen(e),0);
  $("#reportDate").textContent=formatDateJP(key);$("#reportNet").textContent=yen(n);$("#reportNet").className=n>0?"pos":n<0?"neg":"neutral";$("#reportInvest").textContent=yen(inv);$("#reportReturn").textContent=yen(ret);$("#reportWins").textContent=es.filter(e=>rawNet(e)>0).length;$("#reportLosses").textContent=es.filter(e=>rawNet(e)<0).length;$("#reportCount").textContent=es.length+"件";
@@ -344,6 +355,18 @@ function periodLabelFor(k,type){
  if(type==="year") return d.getDate()===1?`${d.getMonth()+1}月`:"";
  if(type==="all") return d.getDate()===1&&d.getMonth()===0?`${d.getFullYear()}年`:"";
  return `${d.getMonth()+1}/${d.getDate()}`;
+}
+
+function chartScale(vals){
+ const finite=vals.filter(Number.isFinite);
+ if(!finite.length)return {min:-10000,max:10000,step:10000};
+ let lo=Math.min(0,...finite),hi=Math.max(0,...finite);
+ const steps=[10000,20000,50000,100000,200000,500000,1000000];
+ const span=Math.max(hi-lo,10000);
+ let step=steps.find(s=>span/s<=8)||1000000;
+ let min=Math.floor(lo/step)*step,max=Math.ceil(hi/step)*step;
+ if(min===max){min-=step;max+=step;}
+ return {min,max,step};
 }
 
 function drawChart(canvas,data){
@@ -549,6 +572,8 @@ $("#entryForm").onsubmit=e=>{
 $("#deleteEntry").onclick=()=>{if(editingId&&confirm('この記録を削除しますか？')){entries=entries.filter(e=>e.id!==editingId);$("#entryDialog").close();save()}};
 $("#cancelDialog").onclick=$("#closeDialog").onclick=()=>$("#entryDialog").close();
 $("#prevMonth").onclick=()=>{viewDate.setMonth(viewDate.getMonth()-1);renderCalendar()};$("#nextMonth").onclick=()=>{viewDate.setMonth(viewDate.getMonth()+1);renderCalendar()};$("#todayBtn").onclick=()=>{viewDate=new Date();renderCalendar()};
+$("#monthTitle").onclick=()=>{const sel=$("#monthJump");if(!sel)return; if(typeof sel.showPicker==="function")sel.showPicker();else sel.focus();};
+$("#monthJump").onchange=()=>{const [y,m]=$("#monthJump").value.split("-").map(Number);if(y&&m){viewDate=new Date(y,m-1,1);renderCalendar()}};
 $("#reportPrev").onclick=()=>{reportDate.setDate(reportDate.getDate()-1);renderReport()};$("#reportNext").onclick=()=>{reportDate.setDate(reportDate.getDate()+1);renderReport()};
 $("#period").onchange=()=>{updatePeriodControls();renderStats()};$("#periodMonth").onchange=renderStats;$("#periodYear").onchange=renderStats;$("#group").onchange=()=>{renderStats();};$("#analysisTarget").onchange=renderStats;$("#detailSort").onchange=renderStats;$("#chartMode").onchange=renderStats;
 $$('.tab').forEach(b=>b.onclick=()=>{switchPage(b.dataset.page);renderAll();if(b.dataset.page==='settings')updateMachineUpdatedUI()});

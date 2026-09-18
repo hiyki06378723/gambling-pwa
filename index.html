@@ -21,13 +21,13 @@
 <main>
 <section id="calendarPage" class="page active">
   <div class="monthbar">
-    <button id="prevMonth">‹</button><h2 id="monthTitle"></h2><button id="nextMonth">›</button>
+    <button id="prevMonth">‹</button><button id="monthTitle" class="monthTitleButton" type="button" aria-label="記録のある月を選択"></button><button id="nextMonth">›</button><select id="monthJump" class="hiddenField" aria-label="記録のある月"></select>
   </div>
   <div class="summary">
     <div><span>月間収支</span><strong id="monthNet">¥0</strong></div>
-    <div><span>勝ち日</span><strong id="winDays">0</strong></div>
-    <div><span>負け日</span><strong id="loseDays">0</strong></div>
     <div><span>投資</span><strong id="monthInvest">¥0</strong></div>
+    <div><span>勝ち</span><strong id="winDays">0</strong></div>
+    <div><span>負け</span><strong id="loseDays">0</strong></div>
   </div>
   <div class="card">
     <div class="cardhead"><h3>カレンダー</h3><button id="todayBtn" class="small">今月</button></div>
