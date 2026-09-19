@@ -15,6 +15,7 @@
     <button class="tab active" data-page="calendar">カレンダー</button>
     <button class="tab" data-page="report">日報</button>
     <button class="tab" data-page="stats">分析</button>
+    <button class="tab" data-page="tools">ツール</button>
   </nav>
 </header>
 
@@ -63,6 +64,15 @@
   </div>
 </section>
 
+<section id="toolsPage" class="page">
+  <div class="card toolsComingSoon">
+    <div class="toolsIcon">🛠️</div>
+    <h2>ツール</h2>
+    <div class="comingSoon">Coming soon...</div>
+    <p class="settingsNote">小役カウンターやノリ打ち計算機など、遊技中に使える便利なツールをここに追加していく予定です。</p>
+  </div>
+</section>
+
 <section id="settingsPage" class="page">
   <div class="card">
     <div class="cardhead"><h2>データ・機種設定</h2><span id="machineSyncStatus" class="smallText neutral">機種データ確認中</span></div>
@@ -101,6 +111,11 @@
       </div>
       <div class="storeRateActions"><button type="button" id="saveStoreRate" class="primary">この条件を保存</button><button type="button" id="deleteStoreRate" class="danger">ユーザー設定を削除</button></div>
     </div>
+  </div>
+  <div class="card">
+    <div class="cardhead"><h3>収支の表示</h3><span id="netDisplayLabel" class="smallText neutral">1円単位</span></div>
+    <p class="settingsNote">収支の表示だけを100円単位に切り捨てます。内部の記録データや計算結果は変更しません。</p>
+    <label class="checkRow"><input type="checkbox" id="netDisplayHundreds"> 10の位以下を切り捨てて表示（100円単位）</label>
   </div>
   <div class="card">
     <div class="cardhead"><h3>デザイン</h3><span id="themeLabel" class="smallText neutral">ダーク</span></div>
@@ -144,6 +159,7 @@
   <button class="tab active" data-page="calendar"><span>▦</span>カレンダー</button>
   <button class="tab" data-page="report"><span>▤</span>日報</button>
   <button class="tab" data-page="stats"><span>◒</span>分析</button>
+  <button class="tab" data-page="tools"><span>🛠</span>ツール</button>
   <button class="tab" data-page="settings"><span>⚙</span>設定</button>
 </div>
 

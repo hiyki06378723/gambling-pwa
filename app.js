@@ -32,7 +32,7 @@ let STORE_DATA={stores:[]};
 let STORE_RATES={version:1,stores:{}};
 let STORE_RATES_CUSTOM={};
 
-const APP_VERSION="8.37.3";
+const APP_VERSION="8.37.4";
 
 function loadMachineData(){
   try{
@@ -322,6 +322,7 @@ for(const x of prefSet)if(!PREF_ORDER.includes(x))prefs.push(x);pref.innerHTML='
 }
 function collectStore(div){try{return JSON.parse(div.dataset.store||"null")||null}catch(e){return null}}
 const THEME_KEY="gambling-theme-v1";
+const NET_DISPLAY_KEY="gambling-net-display-v1";
 function applyTheme(theme){
   const light=theme==='light';
   document.body.classList.toggle('lightTheme',light);
@@ -334,6 +335,20 @@ function applyTheme(theme){
 }
 function loadTheme(){applyTheme(localStorage.getItem(THEME_KEY)==='light'?'light':'dark')}
 const yen=n=>"¥"+Math.round(n||0).toLocaleString("ja-JP");
+function netYen(n){
+  const value=Number(n)||0;
+  if(!netDisplayEnabled())return yen(value);
+  const rounded=Math.trunc(value/100)*100;
+  return "¥"+(rounded).toLocaleString("ja-JP");
+}
+function netDisplayEnabled(){return localStorage.getItem(NET_DISPLAY_KEY)==="hundreds"}
+function applyNetDisplaySetting(){
+  const enabled=netDisplayEnabled();
+  const el=$("#netDisplayHundreds");
+  if(el)el.checked=enabled;
+  const label=$("#netDisplayLabel");
+  if(label)label.textContent=enabled?"100円単位":"1円単位";
+}
 const RATE_OPTIONS={"パチスロ":[20,10,5],"パチンコ":[4,2,1,0.5]};
 function unitFor(genre){return genre==='パチスロ'?'枚':genre==='パチンコ'?'玉':'円'}
 function rateFor(e){return Number(e.rate)||((e.genre==='パチスロ')?20:(e.genre==='パチンコ'?4:1))}
@@ -398,21 +413,21 @@ function renderCalendar(){
   let k=`${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`,arr=map[k]||[],n=dayPersonalNet(arr);
   total+=n;inv+=arr.reduce((a,e)=>a+invYen(e),0);if(n>0)wins++;if(n<0)loss++;
   let cls=n>0?"win":n<0?"lose":"zero",today=k===dateKey(new Date())?" today":"";
-  html+=`<button class="day ${cls}${today}" data-date="${k}"><span class="date">${d}</span><span class="daynet ${n>0?"pos":n<0?"neg":"neutral"}">${arr.length?yen(n):"—"}</span></button>`;
+  html+=`<button class="day ${cls}${today}" data-date="${k}"><span class="date">${d}</span><span class="daynet ${n>0?"pos":n<0?"neg":"neutral"}">${arr.length?netYen(n):"—"}</span></button>`;
  }
- $("#calendar").innerHTML=html;$("#monthNet").textContent=yen(total);$("#monthNet").className=total>0?"pos":total<0?"neg":"neutral";$("#winDays").textContent=wins;$("#loseDays").textContent=loss;$("#monthInvest").textContent=yen(inv);
+ $("#calendar").innerHTML=html;$("#monthNet").textContent=netYen(total);$("#monthNet").className=total>0?"pos":total<0?"neg":"neutral";$("#winDays").textContent=wins;$("#loseDays").textContent=loss;$("#monthInvest").textContent=yen(inv);
  $$("#calendar .day").forEach(b=>b.onclick=()=>{reportDate=parseDate(b.dataset.date);switchPage("report");renderReport()});
  drawChart($("#calendarChart"),dailySeries(y,m));
 }
 function dailySeries(y,m){let last=new Date(y,m+1,0).getDate(),map={};entries.forEach(e=>{if(e.date.startsWith(`${y}-${String(m+1).padStart(2,"0")}`))(map[e.date]??=[]).push(e)});let cum=0,a=[{label:"開始",value:0}];for(let d=1;d<=last;d++){let k=`${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`,n=dayPersonalNet(map[k]||[]);cum+=n;a.push({label:d,value:cum})}return a}
 function renderReport(){
  const key=dateKey(reportDate),es=entries.filter(e=>e.date===key),n=dayPersonalNet(es),inv=es.reduce((a,e)=>a+invYen(e),0),ret=es.reduce((a,e)=>a+retYen(e),0);
- $("#reportDate").textContent=formatDateJP(key);$("#reportNet").textContent=yen(n);$("#reportNet").className=n>0?"pos":n<0?"neg":"neutral";$("#reportInvest").textContent=yen(inv);$("#reportReturn").textContent=yen(ret);$("#reportWins").textContent=es.filter(e=>rawNet(e)>0).length;$("#reportLosses").textContent=es.filter(e=>rawNet(e)<0).length;$("#reportCount").textContent=es.length+"件";
+ $("#reportDate").textContent=formatDateJP(key);$("#reportNet").textContent=netYen(n);$("#reportNet").className=n>0?"pos":n<0?"neg":"neutral";$("#reportInvest").textContent=yen(inv);$("#reportReturn").textContent=yen(ret);$("#reportWins").textContent=es.filter(e=>rawNet(e)>0).length;$("#reportLosses").textContent=es.filter(e=>rawNet(e)<0).length;$("#reportCount").textContent=es.length+"件";
  const groups={};es.forEach(e=>(groups[e.machine]??=[]).push(e));
  const machineArr=Object.entries(groups).sort((a,b)=>b[1].reduce((x,e)=>x+rawNet(e),0)-a[1].reduce((x,e)=>x+rawNet(e),0));
- $("#reportMachines").innerHTML=machineArr.length?machineArr.map(([machine,list])=>{let total=list.reduce((a,e)=>a+rawNet(e),0);return `<button class="reportMachine" data-machine="${escapeHtml(machine)}"><div><b>${escapeHtml(machine)}</b><small>${escapeHtml(list[0].genre)} ・ ${list[0].rate?list[0].rate+"円":""} ・ ${list.length}件</small></div><strong class="${total>=0?"pos":"neg"}">${yen(total)}</strong></button>`}).join(""):"<div class='emptyState'>この日の記録はありません。<br>右上の「＋ 記録」から追加できます。</div>";
+ $("#reportMachines").innerHTML=machineArr.length?machineArr.map(([machine,list])=>{let total=list.reduce((a,e)=>a+rawNet(e),0);return `<button class="reportMachine" data-machine="${escapeHtml(machine)}"><div><b>${escapeHtml(machine)}</b><small>${escapeHtml(list[0].genre)} ・ ${list[0].rate?list[0].rate+"円":""} ・ ${list.length}件</small></div><strong class="${total>=0?"pos":"neg"}">${netYen(total)}</strong></button>`}).join(""):"<div class='emptyState'>この日の記録はありません。<br>右上の「＋ 記録」から追加できます。</div>";
  $$(".reportMachine").forEach(b=>b.onclick=()=>{const m=b.dataset.machine;const first=es.find(e=>e.machine===m);if(first)openForm(key,first.id)});
- $("#reportEntries").innerHTML=es.length?es.map(e=>`<div class="entryCard"><div class="entryTop"><div><b>${escapeHtml(e.machine)}</b><small>${escapeHtml(e.genre)} ・ ${e.rate?e.rate+"円":""} / 投資 ${displayMoneyOrUnit(e.investType,e.invest,e.genre,e.rate)} / 回収 ${displayMoneyOrUnit(e.returnType,e.return,e.genre,e.rate)}</small></div><strong class="${rawNet(e)>=0?"pos":"neg"}">${yen(rawNet(e))}</strong></div>${e.memo?`<p class="memo">${escapeHtml(e.memo)}</p>`:""}<div class="entryActions"><button onclick="editEntry('${e.id}')">編集</button><button class="danger" onclick="deleteById('${e.id}')">削除</button></div></div>`).join(""):"<div class='emptyState'>記録なし</div>";
+ $("#reportEntries").innerHTML=es.length?es.map(e=>`<div class="entryCard"><div class="entryTop"><div><b>${escapeHtml(e.machine)}</b><small>${escapeHtml(e.genre)} ・ ${e.rate?e.rate+"円":""} / 投資 ${displayMoneyOrUnit(e.investType,e.invest,e.genre,e.rate)} / 回収 ${displayMoneyOrUnit(e.returnType,e.return,e.genre,e.rate)}</small></div><strong class="${rawNet(e)>=0?"pos":"neg"}">${netYen(rawNet(e))}</strong></div>${e.memo?`<p class="memo">${escapeHtml(e.memo)}</p>`:""}<div class="entryActions"><button onclick="editEntry('${e.id}')">編集</button><button class="danger" onclick="deleteById('${e.id}')">削除</button></div></div>`).join(""):"<div class='emptyState'>記録なし</div>";
 }
 function periodRange(type){
  const now=new Date();
@@ -446,7 +461,7 @@ function updatePeriodControls(){
 }
 
 function inPeriod(e,r){return e.date>=r[0]&&e.date<=r[1]}
-function renderStats(){let r=periodRange($("#period").value),es=entries.filter(e=>inPeriod(e,r)),byDate={};es.forEach(e=>(byDate[e.date]??=[]).push(e));let total=Object.values(byDate).reduce((a,arr)=>a+dayPersonalNet(arr),0),inv=es.reduce((a,e)=>a+invYen(e),0),ret=es.reduce((a,e)=>a+retYen(e),0),win=es.filter(e=>net(e)>0).length;$("#statNet").textContent=yen(total);$("#statNet").className=total>0?"pos":total<0?"neg":"neutral";$("#statInvest").textContent=yen(inv);$("#statReturn").textContent=yen(ret);$("#statWinRate").textContent=(es.length?(win/es.length*100):0).toFixed(1)+"%";
+function renderStats(){let r=periodRange($("#period").value),es=entries.filter(e=>inPeriod(e,r)),byDate={};es.forEach(e=>(byDate[e.date]??=[]).push(e));let total=Object.values(byDate).reduce((a,arr)=>a+dayPersonalNet(arr),0),inv=es.reduce((a,e)=>a+invYen(e),0),ret=es.reduce((a,e)=>a+retYen(e),0),win=es.filter(e=>net(e)>0).length;$("#statNet").textContent=netYen(total);$("#statNet").className=total>0?"pos":total<0?"neg":"neutral";$("#statInvest").textContent=yen(inv);$("#statReturn").textContent=yen(ret);$("#statWinRate").textContent=(es.length?(win/es.length*100):0).toFixed(1)+"%";
  const group=$("#group").value; const target=$("#analysisTarget")?.value||"";
  updateAnalysisTargetOptions(es,group);
  const selectedTarget=$("#analysisTarget")?.value||target;
@@ -465,9 +480,9 @@ function groupedStats(list,keyFn){const m=new Map();for(const e of list){const k
 function renderStoreGroups(es,target="") {
  const gs=groupedStats(es,e=>e.store?storeKey(e):"未選択");
  if(!gs.length){$("#detailStats").innerHTML=`<div class="card emptyState">${target?"この店舗のデータがありません":"店舗を選択してください"}</div>`;return;}
- $("#detailStats").innerHTML=gs.map(g=>`<div class="machineCard"><div class="storeStatTop"><div><h3>${escapeHtml(g.key)}</h3><span class="smallText">${g.count}件</span></div><strong class="${g.net>=0?'pos':'neg'}">${yen(g.net)}</strong></div><div class="statsGrid"><div><span>総投資</span><b>${yen(g.invest)}</b></div><div><span>総回収</span><b>${yen(g.ret)}</b></div><div><span>平均収支</span><b>${yen(g.net/g.count)}</b></div></div></div>`).join("");
+ $("#detailStats").innerHTML=gs.map(g=>`<div class="machineCard"><div class="storeStatTop"><div><h3>${escapeHtml(g.key)}</h3><span class="smallText">${g.count}件</span></div><strong class="${g.net>=0?'pos':'neg'}">${netYen(g.net)}</strong></div><div class="statsGrid"><div><span>総投資</span><b>${yen(g.invest)}</b></div><div><span>総回収</span><b>${yen(g.ret)}</b></div><div><span>平均収支</span><b>${netYen(g.net/g.count)}</b></div></div></div>`).join("");
 }
-function renderStoreMachineGroups(es){const gs=groupedStats(es,e=>(e.store?storeKey(e):"未選択")+" × "+(e.machine||"未選択"));$("#detailStats").innerHTML=gs.length?gs.map(g=>`<div class="machineCard"><div class="storeStatTop"><div><h3>${escapeHtml(g.key)}</h3><span class="smallText">${g.count}件</span></div><strong class="${g.net>=0?'pos':'neg'}">${yen(g.net)}</strong></div><div class="statsGrid"><div><span>総投資</span><b>${yen(g.invest)}</b></div><div><span>総回収</span><b>${yen(g.ret)}</b></div><div><span>平均収支</span><b>${yen(g.net/g.count)}</b></div></div></div>`).join(""):"<div class='card emptyState'>店舗×機種データがありません</div>"}
+function renderStoreMachineGroups(es){const gs=groupedStats(es,e=>(e.store?storeKey(e):"未選択")+" × "+(e.machine||"未選択"));$("#detailStats").innerHTML=gs.length?gs.map(g=>`<div class="machineCard"><div class="storeStatTop"><div><h3>${escapeHtml(g.key)}</h3><span class="smallText">${g.count}件</span></div><strong class="${g.net>=0?'pos':'neg'}">${netYen(g.net)}</strong></div><div class="statsGrid"><div><span>総投資</span><b>${yen(g.invest)}</b></div><div><span>総回収</span><b>${yen(g.ret)}</b></div><div><span>平均収支</span><b>${netYen(g.net/g.count)}</b></div></div></div>`).join(""):"<div class='card emptyState'>店舗×機種データがありません</div>"}
 function renderStatsList(es){
  const sort=$("#detailSort")?.value||"dateDesc";
  const list=es.slice().sort((a,b)=>{
@@ -480,7 +495,7 @@ function renderStatsList(es){
    if(sort==="returnAsc")return retYen(a)-retYen(b)||b.date.localeCompare(a.date);
    return b.date.localeCompare(a.date);
  });
- $("#statsList").innerHTML=list.length?list.map(e=>`<div class="entryCard"><div class="entryTop"><div><b>${escapeHtml(e.machine)}</b><small>${formatDateJP(e.date)} ・ ${escapeHtml(e.genre)} ・ ${e.rate?e.rate+"円":""}</small></div><strong class="${rawNet(e)>=0?"pos":"neg"}">${yen(rawNet(e))}</strong></div><div class="smallText">投資 ${displayMoneyOrUnit(e.investType,e.invest,e.genre,e.rate)} / 回収 ${displayMoneyOrUnit(e.returnType,e.return,e.genre,e.rate)}</div>${e.memo?`<p class="memo">${escapeHtml(e.memo)}</p>`:""}<div class="entryActions"><button onclick="editEntry('${e.id}')">編集</button><button class="danger" onclick="deleteById('${e.id}')">削除</button></div></div>`).join(""):"<p class='neutral'>データがありません</p>";
+ $("#statsList").innerHTML=list.length?list.map(e=>`<div class="entryCard"><div class="entryTop"><div><b>${escapeHtml(e.machine)}</b><small>${formatDateJP(e.date)} ・ ${escapeHtml(e.genre)} ・ ${e.rate?e.rate+"円":""}</small></div><strong class="${rawNet(e)>=0?"pos":"neg"}">${netYen(rawNet(e))}</strong></div><div class="smallText">投資 ${displayMoneyOrUnit(e.investType,e.invest,e.genre,e.rate)} / 回収 ${displayMoneyOrUnit(e.returnType,e.return,e.genre,e.rate)}</div>${e.memo?`<p class="memo">${escapeHtml(e.memo)}</p>`:""}<div class="entryActions"><button onclick="editEntry('${e.id}')">編集</button><button class="danger" onclick="deleteById('${e.id}')">削除</button></div></div>`).join(""):"<p class='neutral'>データがありません</p>";
 }
 function rateLabel(rate){const n=Number(rate);if(!Number.isFinite(n))return "未設定";return `${n.toLocaleString("ja-JP",{maximumFractionDigits:4})}円`;}
 function updateAnalysisTargetOptions(es,group){
@@ -538,7 +553,7 @@ function updateAnalysisTargetOptions(es,group){
  sel.innerHTML='<option value="">対象を選択してください</option>'+vals.map(([v])=>`<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
  if(vals.some(([v])=>v===prev))sel.value=prev;else if(vals.length===1)sel.value=vals[0];
 }
-function machineCard(key,es){let n=es.map(rawNet),wins=n.filter(x=>x>0).length,invest=es.reduce((a,e)=>a+invYen(e),0),ret=es.reduce((a,e)=>a+retYen(e),0),sum=n.reduce((a,x)=>a+x,0);let avg=es.length?sum/es.length:0,max=Math.max(...n,0),min=Math.min(...n,0);return `<div class="machineCard"><h3>${escapeHtml(key)}</h3><div class="statsGrid machineDetailStats"><div class="stat-invest"><span>総投資</span><b>${yen(invest)}</b></div><div class="stat-maxwin"><span>最高勝ち額</span><b class="pos">${yen(max)}</b></div><div class="stat-avg"><span>平均収支</span><b class="${avg>=0?"pos":"neg"}">${yen(avg)}</b></div><div class="stat-return"><span>総回収</span><b>${yen(ret)}</b></div><div class="stat-maxloss"><span>最高負け額</span><b class="neg">${yen(min)}</b></div><div class="stat-winrate"><span>勝率</span><b>${es.length?(wins/es.length*100).toFixed(1):0}%</b></div></div></div>`}
+function machineCard(key,es){let n=es.map(rawNet),wins=n.filter(x=>x>0).length,invest=es.reduce((a,e)=>a+invYen(e),0),ret=es.reduce((a,e)=>a+retYen(e),0),sum=n.reduce((a,x)=>a+x,0);let avg=es.length?sum/es.length:0,max=Math.max(...n,0),min=Math.min(...n,0);return `<div class="machineCard"><h3>${escapeHtml(key)}</h3><div class="statsGrid machineDetailStats"><div class="stat-invest"><span>総投資</span><b>${yen(invest)}</b></div><div class="stat-maxwin"><span>最高勝ち額</span><b class="pos">${netYen(max)}</b></div><div class="stat-avg"><span>平均収支</span><b class="${avg>=0?"pos":"neg"}">${netYen(avg)}</b></div><div class="stat-return"><span>総回収</span><b>${yen(ret)}</b></div><div class="stat-maxloss"><span>最高負け額</span><b class="neg">${netYen(min)}</b></div><div class="stat-winrate"><span>勝率</span><b>${es.length?(wins/es.length*100).toFixed(1):0}%</b></div></div></div>`}
 function periodSeries(es,r,type,mode="calendar",valueFn=net){
  // 収支推移：開始点を0円にし、各記録について「投資→回収」の順で累積する。
  // 投資・回収は現金/持ち玉を円換算した値を使うため、途中経過も実際の資金移動に沿って表示する。
@@ -611,7 +626,7 @@ function drawChart(canvas,data){
      ctx.setLineDash([2,4]);ctx.strokeStyle="#445066";ctx.lineWidth=1;
    }
    ctx.stroke();
-   ctx.fillStyle="#8793aa";ctx.fillText(yen(v),padL-7,yy+3);
+   ctx.fillStyle="#8793aa";ctx.fillText(netYen(v),padL-7,yy+3);
  }
  // 推移線
  ctx.setLineDash([]);
@@ -716,7 +731,7 @@ function renderRowRecent(div){
    q.dispatchEvent(new Event('input',{bubbles:true}));
  });
 }
-function updateRowPreview(div){const genre=div.querySelector('.rowGenre').value,rate=Number(div.querySelector('.rowRate').value||1),profile=getStoreRateProfile(collectStore(div),genre,rate),it=div.querySelector('.rowInvestType').value,rt=div.querySelector('.rowReturnType').value,inv=calcInputYen(it,div.querySelector('.rowInvest').value,genre,rate,profile,'investment'),ret=calcInputYen(rt,div.querySelector('.rowReturn').value,genre,rate,profile,'return');const missing=(it==='hold'&&inv===null)||(rt==='hold'&&ret===null);const n=missing?0:ret-inv;const el=div.querySelector('.rowNet');el.textContent=missing?'条件未設定':yen(n);el.className='rowNet '+(missing?'neutral':n>0?'pos':n<0?'neg':'neutral');div.querySelector('.rowUnitPreview').textContent=missing?'持ち玉／持ちメダルの換算条件を設定してください':`投資 ${displayMoneyOrUnit(it,inv??0,genre,rate)} ／ 回収 ${displayMoneyOrUnit(rt,ret??0,genre,rate)}`}
+function updateRowPreview(div){const genre=div.querySelector('.rowGenre').value,rate=Number(div.querySelector('.rowRate').value||1),profile=getStoreRateProfile(collectStore(div),genre,rate),it=div.querySelector('.rowInvestType').value,rt=div.querySelector('.rowReturnType').value,inv=calcInputYen(it,div.querySelector('.rowInvest').value,genre,rate,profile,'investment'),ret=calcInputYen(rt,div.querySelector('.rowReturn').value,genre,rate,profile,'return');const missing=(it==='hold'&&inv===null)||(rt==='hold'&&ret===null);const n=missing?0:ret-inv;const el=div.querySelector('.rowNet');el.textContent=missing?'条件未設定':netYen(n);el.className='rowNet '+(missing?'neutral':n>0?'pos':n<0?'neg':'neutral');div.querySelector('.rowUnitPreview').textContent=missing?'持ち玉／持ちメダルの換算条件を設定してください':`投資 ${displayMoneyOrUnit(it,inv??0,genre,rate)} ／ 回収 ${displayMoneyOrUnit(rt,ret??0,genre,rate)}`}
 function updateBatchTotal(){
  let inv=0,ret=0,raw=0,personalInv=0,missing=false;
  $$(`#entryRows .entryRow`).forEach(d=>{
@@ -743,7 +758,7 @@ function updateBatchTotal(){
  $("#batchInvest").textContent=yen(nori?personalInv:inv);
  $("#batchInvestLabel").textContent=nori?'自分の投資額（現金のみ）':'合計投資';
  $("#batchReturn").textContent=yen(ret);
- $("#batchNet").textContent=yen(n);
+ $("#batchNet").textContent=netYen(n);
  $("#batchNet").className=n>0?'pos':n<0?'neg':'neutral';
 }
 function renumberRows(){$$('#entryRows .entryRow').forEach((d,i)=>d.querySelector('.rowHead h3').textContent=`機種 ${i+1}`)}
@@ -812,9 +827,11 @@ $("#period").onchange=()=>{updatePeriodControls();renderStats()};$("#periodMonth
 $$('.tab').forEach(b=>b.onclick=()=>{switchPage(b.dataset.page);renderAll();if(b.dataset.page==='settings')updateMachineUpdatedUI()});
 $("#updateMachines").onclick=()=>updateMachineData(false);$("#updateStores").onclick=async()=>{const ok=await updateStoreData(false);await updateStoreRates(false);alert(ok?"店舗データを更新しました。次回の入力から最新店舗が候補に表示されます。":"店舗データを更新できませんでした。現在の保存済み店舗データを使用します。");};$("#exportData").onclick=exportBackup;$("#importData").onchange=e=>importBackup(e.target.files[0]);
 $("#themeDark").onclick=()=>applyTheme('dark');$("#themeLight").onclick=()=>applyTheme('light');
+$("#netDisplayHundreds").onchange=e=>{localStorage.setItem(NET_DISPLAY_KEY,e.target.checked?"hundreds":"yen");applyNetDisplaySetting();renderAll()};
 window.addEventListener('online',()=>setMachineStatus('オンライン','ok'));window.addEventListener('offline',()=>setMachineStatus('オフライン：保存済みデータを使用','neutral'));
 // 8.2: 初期描画より先にイベントを登録。初期描画中に別処理が失敗しても「＋ 記録」が無反応にならないようにします。
 loadTheme();
+applyNetDisplaySetting();
 loadStoreData();
 updateStoreData(true);
 updateStoreRates(true);
