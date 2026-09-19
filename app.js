@@ -46,7 +46,7 @@ let STORE_DATA={stores:[]};
 let STORE_RATES={version:1,stores:{}};
 let STORE_RATES_CUSTOM={};
 
-const APP_VERSION="8.38";
+const APP_VERSION="8.41";
 
 function loadMachineData(){
   try{
