@@ -46,7 +46,7 @@ let STORE_DATA={stores:[]};
 let STORE_RATES={version:1,stores:{}};
 let STORE_RATES_CUSTOM={};
 
-const APP_VERSION="8.45";
+const APP_VERSION="8.46";
 
 function loadMachineData(){
   try{
@@ -519,13 +519,14 @@ function renderStats(){let r=periodRange($("#period").value),es=entries.filter(e
    const targetEntries=selectedTarget?es.filter(e=>e.store===selectedTarget):[];
    renderStoreGroups(targetEntries,selectedTarget);
    $("#statsList").innerHTML=selectedTarget?`<p class='smallText neutral'>${escapeHtml(selectedTarget)} の集計結果です。</p>`:"<p class='smallText neutral'>対象の店舗を選択してください。</p>";
-   drawChart($("#statsChart"),periodSeries(targetEntries,r,$("#period").value,$("#chartMode")?.value||"calendar",rawNet));return;
+   drawChart($("#statsChart"),periodSeries(targetEntries,r,$("#period").value,$("#chartMode")?.value||"calendar",rawNet,"daily"));return;
  }
  let targetEntries=es;
  if(group==="machine"||group==="genre")targetEntries=selectedTarget?es.filter(e=>(group==="machine"?e.machine:e.genre)===selectedTarget):[];
  if(group==="rate")targetEntries=selectedTarget?es.filter(e=>String(Number(e.rate))===String(selectedTarget)):[];
  $("#detailStats").innerHTML=(group==="machine"||group==="genre")&&selectedTarget?machineCard(selectedTarget,targetEntries):group==="rate"&&selectedTarget?machineCard(rateLabel(Number(selectedTarget)),targetEntries):"";
- renderStatsList(targetEntries);drawChart($("#statsChart"),periodSeries(targetEntries,r,$("#period").value,$("#chartMode")?.value||"calendar",rawNet));}
+ const graphMode=(group==="machine"||group==="genre")?"entry":"daily";
+ renderStatsList(targetEntries);drawChart($("#statsChart"),periodSeries(targetEntries,r,$("#period").value,$("#chartMode")?.value||"calendar",rawNet,graphMode));}
 function groupedStats(list,keyFn){const m=new Map();for(const e of list){const k=keyFn(e);if(!m.has(k))m.set(k,[]);m.get(k).push(e)}return [...m.entries()].map(([key,arr])=>({key,arr,net:arr.reduce((a,e)=>a+rawNet(e),0),invest:arr.reduce((a,e)=>a+invYen(e),0),ret:arr.reduce((a,e)=>a+retYen(e),0),count:arr.length})).sort((a,b)=>b.net-a.net)}
 function renderStoreGroups(es,target="") {
  const gs=groupedStats(es,e=>e.store?storeKey(e):"未選択");
@@ -604,9 +605,8 @@ function updateAnalysisTargetOptions(es,group){
  if(vals.some(([v])=>v===prev))sel.value=prev;else if(vals.length===1)sel.value=vals[0];
 }
 function machineCard(key,es){let n=es.map(rawNet),wins=n.filter(x=>x>0).length,invest=es.reduce((a,e)=>a+invYen(e),0),ret=es.reduce((a,e)=>a+retYen(e),0),sum=n.reduce((a,x)=>a+x,0);let avg=es.length?sum/es.length:0,max=Math.max(...n,0),min=Math.min(...n,0);return `<div class="machineCard"><h3>${escapeHtml(key)}</h3><div class="statsGrid machineDetailStats"><div class="stat-invest"><span>総投資</span><b>${yen(invest)}</b></div><div class="stat-maxwin"><span>最高勝ち額</span><b class="pos">${netYen(max)}</b></div><div class="stat-avg"><span>平均収支</span><b class="${avg>=0?"pos":"neg"}">${netYen(avg)}</b></div><div class="stat-return"><span>総回収</span><b>${yen(ret)}</b></div><div class="stat-maxloss"><span>最高負け額</span><b class="neg">${netYen(min)}</b></div><div class="stat-winrate"><span>勝率</span><b>${es.length?(wins/es.length*100).toFixed(1):0}%</b></div></div></div>`}
-function periodSeries(es,r,type,mode="calendar",valueFn=net){
- // 収支推移：開始点を0円にし、各記録について「投資→回収」の順で累積する。
- // 投資・回収は現金/持ち玉を円換算した値を使うため、途中経過も実際の資金移動に沿って表示する。
+function periodSeries(es,r,type,mode="calendar",valueFn=rawNet,seriesMode="entry"){
+ // 収支推移：カレンダー表示は日単位のノリ打ち精算額、台別/ジャンル別は個別記録の収支を累積する。
  if(!r||!r[0]||!r[1])return [];
  const filtered=es.filter(e=>e&&e.date&&inPeriod(e,r)).slice().sort((a,b)=>a.date.localeCompare(b.date));
  if(!filtered.length)return [];
@@ -623,14 +623,18 @@ function periodSeries(es,r,type,mode="calendar",valueFn=net){
  const out=[{label:"開始",value:0,date:null,tickUnit:type}];
  dates.forEach(k=>{
    const day=groups[k]||[];
+   if(seriesMode==="daily"){
+     // 日単位で端数を切り捨ててから累積する。
+     const n=displayNetValue(dayPersonalNet(day));
+     cum+=n;
+     out.push({label:periodLabelFor(k,type),value:cum,date:k,tickUnit:type,phase:"daily"});
+     return;
+   }
    day.forEach((e,idx)=>{
-     const inv=invYen(e),ret=retYen(e);
-     // 投資で一度下がり、その後の回収で上がる動きを明示する。
-     if(inv){cum-=inv;out.push({label:"",value:cum,date:k,tickUnit:type,phase:"invest"});}
-     if(ret){cum+=ret;out.push({label:idx===day.length-1?periodLabelFor(k,type):"",value:cum,date:k,tickUnit:type,phase:"return"});}
-     if(!inv&&!ret)out.push({label:idx===day.length-1?periodLabelFor(k,type):"",value:cum,date:k,tickUnit:type,phase:"none"});
+     const n=displayNetValue(valueFn(e));
+     cum+=n;
+     out.push({label:idx===day.length-1?periodLabelFor(k,type):"",value:cum,date:k,tickUnit:type,phase:"entry"});
    });
-   // 通常表示では記録のない日も軸上に残す。記録がある日は上の投資/回収点を使用する。
    if(!day.length && mode!=="continuous")out.push({label:periodLabelFor(k,type),value:cum,date:k,tickUnit:type,phase:"empty"});
  });
  return out;
