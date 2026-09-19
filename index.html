@@ -65,12 +65,36 @@
 </section>
 
 <section id="toolsPage" class="page">
-  <div class="card toolsComingSoon">
-    <div class="toolsIcon">🛠️</div>
-    <h2>ツール</h2>
-    <div class="comingSoon">Coming soon...</div>
-    <p class="settingsNote">小役カウンターやノリ打ち計算機など、遊技中に使える便利なツールをここに追加していく予定です。</p>
+  <div class="card toolsIntro">
+    <div class="cardhead"><div><h2>ツール</h2><p class="settingsNote">使いたいツールを選ぶと展開して使えます。</p></div><span class="smallText neutral">遊技サポート</span></div>
   </div>
+
+  <section class="toolAccordion" id="counterTool">
+    <button type="button" class="toolAccordionHead" id="counterToolToggle" aria-expanded="false" aria-controls="counterToolBody">
+      <span class="toolAccordionIcon">🔢</span><span class="toolAccordionTitle"><b>小役・ボーナス・示唆カウンター</b><small>小役・ボーナス・示唆を自由にカウント／合算できます</small></span><span class="toolAccordionArrow">⌄</span>
+    </button>
+    <div class="toolAccordionBody" id="counterToolBody" hidden>
+      <div class="toolInner">
+        <div class="counterToolTop">
+          <div><label>機種</label><input id="counterMachine" placeholder="例：スマスロ○○"></div>
+          <div><label>プリセット</label><select id="counterPreset"><option value="">選択してください</option></select></div>
+        </div>
+        <div class="counterToolActions"><button type="button" id="counterSavePreset">現在のカウンター設定を保存</button><button type="button" id="counterDeletePreset">選択中の設定を削除</button><button type="button" id="counterReset" class="danger">全リセット</button></div>
+
+        <div class="counterGamesBox">
+          <label>総ゲーム数</label>
+          <div class="counterGamesRow"><button type="button" id="counterGameM100">−100</button><button type="button" id="counterGameM1">−1</button><input id="counterGames" type="number" min="0" value="0" inputmode="numeric"><button type="button" id="counterGameP1">＋1</button><button type="button" id="counterGameP100">＋100</button></div>
+        </div>
+
+        <div class="counterListBox">
+          <div id="counterRows"></div>
+          <div class="counterAddRow"><input id="counterNewName" placeholder="小役・ボーナス・示唆などを追加"><button type="button" class="primary" id="counterAdd">＋追加</button></div>
+          <button type="button" class="counterAggregateButton" id="counterAddAggregate">＋合算を作成</button>
+        </div>
+        <p class="counterNote">※ 出現率は「総ゲーム数 ÷ カウント」で表示します。<br>※ 項目名をタップするとその場で編集できます。左端の「☷」をドラッグすると順番を入れ替えられます。<br>※ 合算はCZ合算・小役A/B合算など、好きな項目を組み合わせて自動計算できます。合算にも出現率を表示します。</p>
+      </div>
+    </div>
+  </section>
 </section>
 
 <section id="settingsPage" class="page">
@@ -187,5 +211,6 @@
 </dialog>
 
 <script src="app.js"></script>
+<script src="counter-tool.js"></script>
 </body>
 </html>
