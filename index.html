@@ -58,6 +58,10 @@
     <div class="cardhead"><h3>この日の機種別</h3><span id="reportCount" class="neutral smallText">0件</span></div>
     <div id="reportMachines"></div>
   </div>
+  <div class="card" id="reportCounterCard">
+    <div class="cardhead"><h3>この日のカウンター</h3><span id="reportCounterCount" class="neutral smallText">0件</span></div>
+    <div id="reportCounters"></div>
+  </div>
   <div class="card">
     <div class="cardhead"><h3>全記録</h3><button type="button" id="reportAdd2" class="small primary" onclick="openForm(dateKey(reportDate))">＋追加</button></div>
     <div id="reportEntries"></div>
@@ -80,6 +84,7 @@
           <div><label>プリセット</label><select id="counterPreset"><option value="">選択してください</option></select></div>
         </div>
         <div class="counterToolActions"><button type="button" id="counterSavePreset">現在の設定を保存</button><button type="button" id="counterDeletePreset">選択中の設定を削除</button><button type="button" id="counterReset" class="danger">全リセット</button></div>
+        <div class="counterDailySave"><label>記録日<input id="counterDate" type="date"></label><button type="button" class="primary" id="counterSaveDaily">この日の収支に保存</button></div>
 
         <div class="counterGamesBox">
           <label>総ゲーム数</label>

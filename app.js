@@ -46,7 +46,7 @@ let STORE_DATA={stores:[]};
 let STORE_RATES={version:1,stores:{}};
 let STORE_RATES_CUSTOM={};
 
-const APP_VERSION="8.41";
+const APP_VERSION="8.44";
 
 function loadMachineData(){
   try{
@@ -441,9 +441,32 @@ function renderCalendar(){
  drawChart($("#calendarChart"),dailySeries(y,m));
 }
 function dailySeries(y,m){let last=new Date(y,m+1,0).getDate(),map={};entries.forEach(e=>{if(e.date.startsWith(`${y}-${String(m+1).padStart(2,"0")}`))(map[e.date]??=[]).push(e)});let cum=0,a=[{label:"開始",value:0}];for(let d=1;d<=last;d++){let k=`${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`,n=dayPersonalNet(map[k]||[]);cum+=n;a.push({label:d,value:cum})}return a}
+function deleteCounterDaily(date,machine){
+ const logsKey='gambling-counter-daily-v1';
+ let logs={};try{const x=JSON.parse(localStorage.getItem(logsKey)||'{}');if(x&&typeof x==='object')logs=x}catch(e){}
+ const key=`${date}\u0000${machine||'未設定'}`;
+ if(!Object.prototype.hasOwnProperty.call(logs,key))return;
+ if(!confirm(`${date.replaceAll('-','/')} の「${machine||'未設定'}」のカウンター情報を削除しますか？`))return;
+ delete logs[key];
+ localStorage.setItem(logsKey,JSON.stringify(logs));
+ renderCounterDailyReport(date);
+}
+window.deleteCounterDaily=deleteCounterDaily;
+
+function renderCounterDailyReport(date){
+ const card=document.getElementById('reportCounterCard'),box=document.getElementById('reportCounters'),countEl=document.getElementById('reportCounterCount');
+ if(!card||!box)return;
+ let logs={};try{const x=JSON.parse(localStorage.getItem('gambling-counter-daily-v1')||'{}');if(x&&typeof x==='object')logs=x}catch(e){}
+ const list=Object.values(logs).filter(x=>x&&x.date===date).sort((a,b)=>(a.machine||'').localeCompare(b.machine||'','ja'));
+ if(countEl)countEl.textContent=`${list.length}件`;
+ if(!list.length){box.innerHTML='<div class="emptyState counterReportEmpty">この日に保存されたカウンターはありません</div>';return}
+ box.innerHTML=list.map(log=>`<div class="counterReportBlock"><div class="counterReportHead"><div><h4>${escapeHtml(log.machine||'未設定')}</h4><span class="smallText">総ゲーム数 ${Number(log.games||0).toLocaleString()}G</span></div><div class="counterReportHeadActions"><span class="smallText neutral">${log.updatedAt?new Date(log.updatedAt).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):''}</span><button type="button" class="danger small counterReportDelete" data-date="${escapeHtml(log.date||date)}" data-machine="${escapeHtml(log.machine||'未設定')}">削除</button></div></div><div class="counterReportGrid">${(Array.isArray(log.counters)?log.counters:[]).map(c=>`<div class="counterReportItem"><span>${escapeHtml(c.name||'項目')}</span><b>${Number(c.count||0).toLocaleString()}</b><small>${escapeHtml(c.rate||'—')}</small></div>`).join('')}</div></div>`).join('');
+ box.querySelectorAll('.counterReportDelete').forEach(btn=>btn.addEventListener('click',()=>deleteCounterDaily(btn.dataset.date,btn.dataset.machine)));
+}
 function renderReport(){
  const key=dateKey(reportDate),es=entries.filter(e=>e.date===key),n=dayPersonalNet(es),inv=es.reduce((a,e)=>a+invYen(e),0),ret=es.reduce((a,e)=>a+retYen(e),0);
  $("#reportDate").textContent=formatDateJP(key);$("#reportNet").textContent=netYen(n);$("#reportNet").className=n>0?"pos":n<0?"neg":"neutral";$("#reportInvest").textContent=yen(inv);$("#reportReturn").textContent=yen(ret);$("#reportWins").textContent=es.filter(e=>rawNet(e)>0).length;$("#reportLosses").textContent=es.filter(e=>rawNet(e)<0).length;$("#reportCount").textContent=es.length+"件";
+ renderCounterDailyReport(key);
  const groups={};es.forEach(e=>(groups[e.machine]??=[]).push(e));
  const machineArr=Object.entries(groups).sort((a,b)=>b[1].reduce((x,e)=>x+rawNet(e),0)-a[1].reduce((x,e)=>x+rawNet(e),0));
  $("#reportMachines").innerHTML=machineArr.length?machineArr.map(([machine,list])=>{let total=list.reduce((a,e)=>a+rawNet(e),0);return `<button class="reportMachine" data-machine="${escapeHtml(machine)}"><div><b>${escapeHtml(machine)}</b><small>${escapeHtml(list[0].genre)} ・ ${list[0].rate?list[0].rate+"円":""} ・ ${list.length}件</small></div><strong class="${total>=0?"pos":"neg"}">${netYen(total)}</strong></button>`}).join(""):"<div class='emptyState'>この日の記録はありません。<br>右上の「＋ 記録」から追加できます。</div>";
@@ -674,14 +697,15 @@ function drawChart(canvas,data){
 }
 
 function exportBackup(){
-  const payload={version:1,exportedAt:new Date().toISOString(),entries,machineData:MACHINE_DATA};
+  let counterDaily={};try{const x=JSON.parse(localStorage.getItem("gambling-counter-daily-v1")||"{}");if(x&&typeof x==="object")counterDaily=x}catch(e){}
+  const payload={version:2,exportedAt:new Date().toISOString(),entries,machineData:MACHINE_DATA,counterDaily};
   const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`収支管理バックアップ_${dateKey(new Date())}.json`;a.click();URL.revokeObjectURL(a.href);
 }
 function importBackup(file){
   if(!file)return;
   const reader=new FileReader();
-  reader.onload=()=>{try{const data=JSON.parse(reader.result);if(!Array.isArray(data.entries))throw new Error("収支データがありません");if(!confirm("現在の収支データをバックアップ内容で置き換えますか？"))return;entries=data.entries;localStorage.setItem(KEY,JSON.stringify(entries));if(data.machineData?.パチスロ&&data.machineData?.パチンコ){MACHINE_DATA.パチスロ=data.machineData.パチスロ;MACHINE_DATA.パチンコ=data.machineData.パチンコ;localStorage.setItem(MACHINE_DATA_KEY,JSON.stringify(MACHINE_DATA));}renderAll();alert("バックアップを復元しました");}catch(e){alert("バックアップの読み込みに失敗しました");}};reader.readAsText(file);
+  reader.onload=()=>{try{const data=JSON.parse(reader.result);if(!Array.isArray(data.entries))throw new Error("収支データがありません");if(!confirm("現在の収支データをバックアップ内容で置き換えますか？"))return;entries=data.entries;localStorage.setItem(KEY,JSON.stringify(entries));if(data.counterDaily&&typeof data.counterDaily==="object")localStorage.setItem("gambling-counter-daily-v1",JSON.stringify(data.counterDaily));if(data.machineData?.パチスロ&&data.machineData?.パチンコ){MACHINE_DATA.パチスロ=data.machineData.パチスロ;MACHINE_DATA.パチンコ=data.machineData.パチンコ;localStorage.setItem(MACHINE_DATA_KEY,JSON.stringify(MACHINE_DATA));}renderAll();alert("バックアップを復元しました");}catch(e){alert("バックアップの読み込みに失敗しました");}};reader.readAsText(file);
 }
 
 function recentMachines(genre){return [...new Set(entries.slice().sort((a,b)=>b.date.localeCompare(a.date)).filter(e=>!genre||e.genre===genre).map(e=>e.machine).filter(Boolean))].slice(0,6)}

@@ -1,6 +1,7 @@
 /* 収支管理PWA内蔵：小役・ボーナス・示唆カウンター */
 const COUNTER_KEY='gambling-counter-v1';
 const COUNTER_PRESET_KEY='gambling-counter-presets-v1';
+const COUNTER_DAILY_KEY='gambling-counter-daily-v1';
 
 const COUNTER_INITIAL_PRESETS={
   'スマスロ モンキーターンV':['弱チェリー','強チェリー','ボート','弱チャンス目','強チャンス目','究極目'],
@@ -12,6 +13,7 @@ const COUNTER_INITIAL_PRESETS={
   'ゴーゴージャグラー3':['BIG','REG','合算','ブドウ','チェリー'],
   'ハナハナホウオウ～天翔～':['BIG','REG','合算','ベル','スイカ'],
   'ドラゴンハナハナ～閃光～':['BIG','REG','合算','ベル','スイカ'],
+  '小役・汎用':['弱チェリー','強チェリー','スイカ','弱チャンス目','強チャンス目'],
   '示唆系・汎用':['設定2以上示唆','設定4以上示唆','設定6以上示唆','高設定示唆','終了画面A','終了画面B','特殊ボイス','その他示唆']
 };
 
@@ -142,26 +144,47 @@ function counterDelete(id){const c=counterFind(id);if(!c)return;if(!confirm(`「
 function counterReset(){if(!confirm('カウンターをすべてリセットしますか？'))return;counterState.games=0;counterState.counters.forEach(c=>{if(c.type!=='derived')c.count=0});counterRender()}
 
 function counterPresets(){
-  const saved=JSON.parse(localStorage.getItem(COUNTER_PRESET_KEY)||'null');
-  if(saved)return saved;
-  const initial={};Object.entries(COUNTER_INITIAL_PRESETS).forEach(([k,names])=>initial[k]=names.map(name=>({id:counterId(),name,count:0,type:'manual',sources:[],color:''})));
-  localStorage.setItem(COUNTER_PRESET_KEY,JSON.stringify(initial));return initial;
+  let saved=null;try{saved=JSON.parse(localStorage.getItem(COUNTER_PRESET_KEY)||'null')}catch(e){}
+  const p=saved&&typeof saved==='object'?saved:{};
+  let changed=false;
+  Object.entries(COUNTER_INITIAL_PRESETS).forEach(([k,names])=>{
+    if(!Array.isArray(p[k])){p[k]=names.map(name=>({id:counterId(),name,count:0,type:'manual',sources:[],color:''}));changed=true}
+  });
+  if(changed||!saved)localStorage.setItem(COUNTER_PRESET_KEY,JSON.stringify(p));
+  return p;
+}
+function counterDailyLogs(){try{const x=JSON.parse(localStorage.getItem(COUNTER_DAILY_KEY)||'{}');return x&&typeof x==='object'?x:{}}catch(e){return {}}}
+function counterDailyKey(date,machine){return `${date}\u0000${machine||'未設定'}`}
+function counterSnapshot(){
+  return {machine:counterState.machine||'',games:counterState.games,counters:counterState.counters.map(c=>({name:c.name,count:counterCount(c),rate:counterRate(c),type:c.type,color:c.color||''}))};
+}
+function counterSaveToDaily(){
+  const date=document.getElementById('counterDate')?.value||new Date().toISOString().slice(0,10);
+  const machine=document.getElementById('counterMachine')?.value.trim();
+  if(!machine){alert('機種名を入力してください');return}
+  if(!counterState.counters.length){alert('保存するカウンター項目がありません');return}
+  counterState.machine=machine;counterState.games=Math.max(0,Number(document.getElementById('counterGames')?.value)||0);
+  const logs=counterDailyLogs(),key=counterDailyKey(date,machine);
+  logs[key]={date,machine,updatedAt:new Date().toISOString(),...counterSnapshot()};
+  localStorage.setItem(COUNTER_DAILY_KEY,JSON.stringify(logs));
+  alert(`${date.replaceAll('-','/')} の収支に「${machine}」のカウンターを保存しました`);
 }
 function counterRefreshPresets(){const el=document.getElementById('counterPreset');if(!el)return;const p=counterPresets();el.innerHTML='<option value="">選択してください</option>';Object.keys(p).forEach(k=>{const o=document.createElement('option');o.value=k;o.textContent=k;el.appendChild(o)})}
-function counterSavePreset(){const machine=document.getElementById('counterMachine')?.value.trim();if(!machine){alert('機種名を入力してください');return}const p=counterPresets();p[machine]=counterState.counters.map(c=>({id:counterId(),name:c.name,count:0,type:c.type,sources:[]}));const idByName=new Map(p[machine].map(x=>[x.name,x.id]));counterState.counters.forEach((c,i)=>{if(c.type==='derived')p[machine][i].sources=(c.sources||[]).map(id=>counterFind(id)?.name).map(name=>idByName.get(name)).filter(Boolean)});localStorage.setItem(COUNTER_PRESET_KEY,JSON.stringify(p));counterRefreshPresets();document.getElementById('counterPreset').value=machine;alert('カウンター設定を保存しました')}
+function counterSavePreset(){const machine=document.getElementById('counterMachine')?.value.trim();if(!machine){alert('機種名を入力してください');return}const p=counterPresets();p[machine]=counterState.counters.map(c=>({id:counterId(),name:c.name,count:0,type:c.type,sources:[],color:c.color||''}));const idByName=new Map(p[machine].map(x=>[x.name,x.id]));counterState.counters.forEach((c,i)=>{if(c.type==='derived')p[machine][i].sources=(c.sources||[]).map(id=>counterFind(id)?.name).map(name=>idByName.get(name)).filter(Boolean)});localStorage.setItem(COUNTER_PRESET_KEY,JSON.stringify(p));counterRefreshPresets();document.getElementById('counterPreset').value=machine;alert('カウンター設定を保存しました')}
 function counterDeletePreset(){const el=document.getElementById('counterPreset'),k=el?.value;if(!k)return;const p=counterPresets();if(!confirm(`「${k}」の設定を削除しますか？`))return;delete p[k];localStorage.setItem(COUNTER_PRESET_KEY,JSON.stringify(p));counterRefreshPresets()}
 function counterLoadPreset(k){const p=counterPresets(),src=p[k];if(!src)return;const oldIds={};counterState.counters=src.map(c=>{const id=counterId();oldIds[c.id]=id;return {id,name:c.name,count:0,type:c.type==='derived'?'derived':'manual',sources:[],color:c.color||''}});src.forEach((c,i)=>{if(c.type==='derived')counterState.counters[i].sources=(c.sources||[]).map(id=>oldIds[id]).filter(Boolean)});counterState.machine=k;const machine=document.getElementById('counterMachine');if(machine)machine.value=k;counterRender()}
 
 function initCounterTool(){
   const root=document.getElementById('counterTool');if(!root)return;
   normalizeCounterState();
-  const machine=document.getElementById('counterMachine'),games=document.getElementById('counterGames');
-  machine.value=counterState.machine;games.value=counterState.games;
+  const machine=document.getElementById('counterMachine'),games=document.getElementById('counterGames'),counterDate=document.getElementById('counterDate');
+  machine.value=counterState.machine;games.value=counterState.games;if(counterDate)counterDate.value=new Date().toISOString().slice(0,10);
   counterRefreshPresets();counterRender();
   document.getElementById('counterPreset').onchange=e=>{if(e.target.value)counterLoadPreset(e.target.value)};
   machine.oninput=()=>{counterState.machine=machine.value;counterSave()};
   games.oninput=()=>{counterState.games=Math.max(0,Number(games.value)||0);counterRender()};
   document.getElementById('counterSavePreset').onclick=counterSavePreset;
+  document.getElementById('counterSaveDaily').onclick=counterSaveToDaily;
   document.getElementById('counterDeletePreset').onclick=counterDeletePreset;
   document.getElementById('counterGameM100').onclick=()=>counterChangeGames(-100);
   document.getElementById('counterGameM1').onclick=()=>counterChangeGames(-1);
