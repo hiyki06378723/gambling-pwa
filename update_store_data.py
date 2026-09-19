@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""P-WORLDの「市区郡から探す」をたどって店舗マスターを生成するPC用ツール。Ver8.28
+"""P-WORLDの「市区郡から探す」をたどって店舗マスターを生成するPC用ツール。Ver8.37.3
 
 住所の解析は行いません。
 1. 各都道府県トップの「市区郡から探す」から市区郡ページのURLを取得
@@ -98,15 +98,18 @@ class CityLinkParser(HTMLParser):
 
 
 class StoreH2Parser(HTMLParser):
-    """市区郡ページから店舗名だけを取得する。
+    """市区郡ページから店舗名とP-WORLD掲載の貸出条件を取得する。
 
-    P-WORLDの店舗一覧では店舗名がh2内のa要素になっているため、
-    住所・料金・告知文などは一切解析しません。
+    料金表示は店舗ブロック内のテキストから、たとえば
+    「1000円/46枚」「1000円/250玉」のような明示的な貸出条件だけを抽出する。
+    交換率はP-WORLDの掲載情報だけでは一律に確定できないため取得しない。
     """
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.in_h2 = False
+        self.in_block = False
         self.h2_text = []
+        self.block_text = []
         self.h2_href = ''
         self.items = []
 
@@ -114,37 +117,158 @@ class StoreH2Parser(HTMLParser):
         tag = tag.lower()
         if tag == 'h2':
             self._finish()
+            self.in_block = True
             self.in_h2 = True
             self.h2_text = []
+            self.block_text = []
             self.h2_href = ''
-        elif self.in_h2 and tag == 'a':
+        elif self.in_block and self.in_h2 and tag == 'a':
             d = dict(attrs)
             href = html.unescape(d.get('href', '') or '')
             if href and not self.h2_href:
                 self.h2_href = urljoin(BASE, href)
 
     def handle_data(self, data):
+        if self.in_block:
+            self.block_text.append(data)
         if self.in_h2:
             self.h2_text.append(data)
 
     def handle_endtag(self, tag):
-        if tag.lower() == 'h2':
-            self._finish()
+        if tag.lower() == 'h2' and self.in_h2:
+            self.in_h2 = False
 
     def _finish(self):
-        if not self.in_h2:
+        if not self.in_block:
             return
         name = norm(' '.join(self.h2_text))
         if name:
-            self.items.append({'name': name, 'url': self.h2_href})
+            text = norm(' '.join(self.block_text))
+            self.items.append({'name': name, 'url': self.h2_href, 'rates': parse_lending_rates(text)})
+        self.in_block = False
         self.in_h2 = False
         self.h2_text = []
+        self.block_text = []
         self.h2_href = ''
 
     def close(self):
         super().close()
         self._finish()
 
+
+def parse_lending_rates(text: str):
+    """P-WORLDの店舗ブロックから貸出条件を正規化して抽出する。
+
+    表記揺れをできるだけ吸収する：
+      1000円/46枚 / 1,000円／46枚 / 1000円46枚
+      1000円=46枚 / 1000円：46枚 / 1000円→46枚
+      1000円 46枚 / 1000円貸出46枚
+    「交換」は対象にせず、P-WORLDに明示された貸出条件だけを扱う。
+    """
+    raw = html.unescape(str(text or ''))
+    raw = raw.replace('\u3000', ' ').replace('\uff0f', '/').replace('\uff1d', '=')
+    raw = raw.replace('，', ',').replace('：', ':').replace('→', '->').replace('⇒', '->')
+    # 数字・単位の間に入る改行や過剰な空白を吸収。ただし数字同士は連結しない。
+    raw = re.sub(r'[\t\r\n]+', ' ', raw)
+
+    # 区切り文字は「/」「=」「:」「->」のほか、空白、括弧、貸出/貸し出し等を許容。
+    # 例: 1000円/46枚, 1,000円／46枚, 1000円 46枚, 1000円貸出46枚
+    sep = r'(?:\s+|[/=:\-]|->|\(|\)|\[|\]|で|につき|貸出(?:し)?|貸し出し)'
+    sep_optional = r'(?:\s*[/=:\-]\s*|\s+|で|につき|貸出(?:し)?|貸し出し)?'
+    patterns = [
+        re.compile(r'(\d[\d,]*(?:\.\d+)?)\s*円\s*' + sep + r'\s*(\d[\d,]*(?:\.\d+)?)\s*(枚|玉)', re.IGNORECASE),
+        re.compile(r'(\d[\d,]*(?:\.\d+)?)\s*円' + sep_optional + r'(\d[\d,]*(?:\.\d+)?)\s*(枚|玉)', re.IGNORECASE),
+    ]
+
+    out = []
+    matches = []
+    for pat in patterns:
+        matches.extend(pat.finditer(raw))
+    for m in sorted(matches, key=lambda x: x.start()):
+        yen = float(m.group(1).replace(',', ''))
+        units = float(m.group(2).replace(',', ''))
+        unit = m.group(3)
+        if yen <= 0 or units <= 0:
+            continue
+        genre = 'パチスロ' if unit == '枚' else 'パチンコ'
+        out.append({
+            'genre': genre,
+            'rate': round(yen / units, 4),
+            'loanUnits': units,
+            'loanYen': yen
+        })
+
+    # 旧表記や同一条件の重複を除去
+    seen = set(); uniq = []
+    for x in out:
+        k = (x['genre'], round(x['rate'], 4), x['loanUnits'], x['loanYen'])
+        if k not in seen:
+            seen.add(k); uniq.append(x)
+    return uniq
+
+
+
+def parse_store_detail_rates(text: str):
+    """店舗詳細ページから遊技料金を取得する。
+
+    店舗一覧ページで貸出条件を取得できなかった場合のフォールバック用。
+    店舗詳細ページでは「遊技料金」「[1000円/49枚]」のような表示を
+    店舗単位で取得できるため、一覧側で取りこぼした条件を補完する。
+    """
+    raw = html.unescape(str(text or ''))
+    raw = raw.replace('\u3000', ' ').replace('\uff0f', '/').replace('\uff1d', '=')
+    raw = raw.replace('，', ',').replace('：', ':').replace('→', '->').replace('⇒', '->')
+    raw = re.sub(r'[\t\r\n]+', ' ', raw)
+
+    # 「1000円/49枚」「500円/490玉」等を広く拾う。
+    # 店舗詳細ページ全体には広告文などにも金額が出る可能性があるため、
+    # まず「遊技料金」付近を優先して検索し、見つからなければ全体を検索する。
+    price_pattern = re.compile(
+        r'(\d[\d,]*(?:\.\d+)?)\s*円\s*'
+        r'(?:\s*[/=:\-]\s*|\s+|で|につき|貸出(?:し)?|貸し出し)\s*'
+        r'(\d[\d,]*(?:\.\d+)?)\s*(枚|玉)',
+        re.IGNORECASE
+    )
+
+    targets = []
+    for m in re.finditer(r'遊技料金', raw):
+        targets.append(raw[m.start():m.start()+1200])
+    if not targets:
+        targets = [raw]
+
+    out=[]
+    for target in targets:
+        for m in price_pattern.finditer(target):
+            yen=float(m.group(1).replace(',',''))
+            units=float(m.group(2).replace(',',''))
+            unit=m.group(3)
+            if yen <= 0 or units <= 0:
+                continue
+            genre='パチスロ' if unit == '枚' else 'パチンコ'
+            out.append({
+                'genre': genre,
+                'rate': round(yen / units, 4),
+                'loanUnits': units,
+                'loanYen': yen
+            })
+
+    seen=set(); uniq=[]
+    for x in out:
+        k=(x['genre'], round(x['rate'],4), x['loanUnits'], x['loanYen'])
+        if k not in seen:
+            seen.add(k); uniq.append(x)
+    return uniq
+
+
+def merge_rates(primary, fallback):
+    """一覧ページの条件を基本にしつつ、詳細ページの条件を不足分として補完する。"""
+    out=[]
+    seen=set()
+    for x in list(primary or []) + list(fallback or []):
+        k=(x.get('genre'), round(float(x.get('rate',0)),4), x.get('loanUnits'), x.get('loanYen'))
+        if k not in seen:
+            seen.add(k); out.append(x)
+    return out
 
 def parse_city_links(text: str):
     p = CityLinkParser()
@@ -174,23 +298,32 @@ def parse_store_names(text: str):
         key = name
         if key not in seen:
             seen.add(key)
-            out.append({'store': name, 'url': item['url']})
+            out.append({'store': name, 'url': item['url'], 'rates': item.get('rates', [])})
     return out
 
 
 def main():
     delay = float(sys.argv[1]) if len(sys.argv) > 1 else 0.12
+    # --verify-details を指定すると全店舗の詳細ページも確認する。
+    # 通常は一覧ページで貸出条件が取れなかった店舗だけ詳細ページを確認する。
+    verify_details = '--verify-details' in sys.argv[1:]
     print('============================================', flush=True)
-    print('  P-WORLD 店舗データ更新 Ver8.28', flush=True)
+    print('  P-WORLD 店舗データ更新 Ver8.37.3', flush=True)
     print('============================================', flush=True)
-    print('「都道府県 → 市区郡から探す → 各市区郡」の順で店舗名だけ取得します。', flush=True)
-    print('住所解析・料金解析は行いません。', flush=True)
+    print('「都道府県 → 市区郡 → 店舗一覧」の順で店舗と貸出条件を取得します。', flush=True)
+    if verify_details:
+        print('詳細ページ検証モード: 全店舗の店舗詳細ページも確認します。', flush=True)
+    else:
+        print('通常モード: 一覧ページで貸出条件が取れない店舗だけ詳細ページを確認します。', flush=True)
 
     all_rows = []
     seen = set()
     total_cities = 0
     pref_ok = 0
     failures = []
+    detail_checked = 0
+    detail_filled = 0
+    detail_failed = 0
 
     for pi, pref in enumerate(PREFS, 1):
         slug = PREF_SLUGS[pref]
@@ -218,6 +351,23 @@ def main():
                 text = fetch(city_url, referer=pref_url)
                 stores = parse_store_names(text)
                 for s in stores:
+                    rates = s.get('rates', []) or []
+                    # 通常は一覧ページで取れなかった店舗だけ詳細ページへ。
+                    # --verify-details では全店舗を詳細ページでも確認する。
+                    if s.get('url') and (verify_details or not rates):
+                        detail_checked += 1
+                        try:
+                            detail_text = fetch(s['url'], referer=city_url)
+                            detail_rates = parse_store_detail_rates(detail_text)
+                            merged = merge_rates(rates, detail_rates)
+                            if not rates and detail_rates:
+                                detail_filled += 1
+                            rates = merged
+                        except Exception as e:
+                            detail_failed += 1
+                            # 詳細ページ取得失敗時は一覧ページの取得結果を維持する。
+                            print(f'      [DETAIL WARN] {s["store"]}: {e}', flush=True)
+
                     key = (pref, city, s['store'])
                     if key not in seen:
                         seen.add(key)
@@ -225,9 +375,12 @@ def main():
                             'prefecture': pref,
                             'city': city,
                             'store': s['store'],
-                            'url': s['url'] or ''
+                            'url': s['url'] or '',
+                            'rates': rates
                         })
-                print(f'    {ci:>3}/{len(city_links)} {city}: {len(stores)}店舗 / 累計 {len(all_rows)}店舗', flush=True)
+                rate_count=sum(len(x.get('rates',[])) for x in stores)
+                missing_count=sum(1 for x in stores if not x.get('rates'))
+                print(f'    {ci:>3}/{len(city_links)} {city}: {len(stores)}店舗 / 貸出条件 {rate_count}件 / 未取得 {missing_count}店舗 / 累計 {len(all_rows)}店舗', flush=True)
             except Exception as e:
                 failures.append(f'{pref} {city}: {e}')
                 print(f'    {ci:>3}/{len(city_links)} {city}: ERROR {e}', flush=True)
@@ -236,6 +389,7 @@ def main():
     print(f'\n都道府県ページ取得成功: {pref_ok}/47', flush=True)
     print(f'市区郡ページ数: {total_cities}', flush=True)
     print(f'店舗名取得数: {len(all_rows)}', flush=True)
+    print(f'詳細ページ確認数: {detail_checked}店舗 / 補完成功: {detail_filled}店舗 / 詳細取得失敗: {detail_failed}店舗', flush=True)
 
     if not all_rows:
         print('\n[NG] 店舗名を1件も取得できませんでした。既存データは変更しません。', file=sys.stderr)

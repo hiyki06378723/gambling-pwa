@@ -319,3 +319,16 @@ body.lightTheme .conditionSection{background:#f4f6fb}
 body.lightTheme .machineSection{background:#f7f4ff}
 body.lightTheme .moneySection{background:#fff9ee}
 body.lightTheme .memoSection{background:#f1f9fa}
+
+/* Ver.8.37 店舗別貸出・交換条件 */
+.rateProfileInfo{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:8px;padding:8px 10px;border-radius:9px;background:rgba(15,23,42,.48);border:1px solid #303c55;font-size:11px;color:#aeb9cd;line-height:1.45}
+.rateProfileInfo span{white-space:nowrap}.rateProfileInfo .rateUnset{color:#d6a85b}
+.storeRateEditor{padding:12px;background:#141c2c;border:1px solid #2b3750;border-radius:13px}
+.storeRateEditor label{display:block;margin:8px 0}.storeRateEditor .two{margin-top:0}.storeRateActions{display:flex;gap:8px;margin-top:10px}.storeRateActions button{flex:1;min-height:44px}.storeRateListHead{margin-top:14px}.storeRateManager{display:grid;gap:8px}.rateManagerItem{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 12px;border:1px solid #303c55;border-radius:11px;background:#101827}.rateManagerItem small{display:block;color:#7f8ba5;margin-top:3px}.rateManagerValues{display:flex;flex-direction:column;gap:3px;text-align:right;font-size:11px;color:#b5bfd1}.rateManagerValues span{white-space:nowrap}
+body.lightTheme .storeRateEditor{background:#f8faff;border-color:#d5ddea}.body.lightTheme .rateProfileInfo{background:#f5f7fb;border-color:#d8deea}.body.lightTheme .rateManagerItem{background:#fff;border-color:#d8deea}.body.lightTheme .rateManagerValues{color:#66728b}
+@media(max-width:650px){.rateProfileInfo{display:grid;gap:3px}.storeRateActions{flex-direction:column}.rateManagerItem{grid-template-columns:1fr}.rateManagerValues{text-align:left}.rateManagerValues span{white-space:normal}}
+.settingsStoreSelectGrid{margin-bottom:10px}
+.rateProfileEditor{margin-top:8px;padding:10px;border:1px solid #303c55;border-radius:10px;background:rgba(15,23,42,.34)}
+.rateProfileEditor .two{margin-top:0}
+.rateProfileEditor .storeRateActions{margin-top:8px}
+body.lightTheme .rateProfileEditor{background:#f5f7fb;border-color:#d8deea}

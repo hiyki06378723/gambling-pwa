@@ -76,6 +76,32 @@
     </div>
     <div class="backupInfo">最終機種データ更新：<b id="machineUpdatedAt">未更新</b><br>収支データ：端末内に保存</div>
   </div>
+  <div class="card storeRateSettingsCard">
+    <div class="cardhead"><h3>店舗の貸出・交換条件</h3><span class="smallText neutral">店舗ごとに保存</span></div>
+    <p class="settingsNote">店舗＋ジャンル＋レートごとの貸出条件と交換条件を登録できます。P-WORLDから取得できる貸出情報がある場合は自動表示し、ここで登録した内容を優先します。交換条件は店舗ごとに確認して登録してください。</p>
+    <div class="storeRateEditor">
+      <div class="storeSelectGrid settingsStoreSelectGrid">
+        <label>都道府県<select id="rateStorePref"><option value="">選択してください</option></select></label>
+        <label>市区郡<select id="rateStoreCity" disabled><option value="">都道府県を先に選択</option></select></label>
+        <label>店舗名<select id="rateStoreName" disabled><option value="">市区郡を先に選択</option></select></label>
+      </div>
+      <label>店舗検索<input id="rateStoreSearch" placeholder="店舗名・市区郡・都道府県で検索…" autocomplete="off"></label>
+      <div id="rateStoreSuggestions" class="storeSuggestions"></div>
+      <div class="two">
+        <label>ジャンル<select id="rateGenre"><option>パチスロ</option><option>パチンコ</option></select></label>
+        <label>レート<select id="rateRate"></select></label>
+      </div>
+      <div class="two">
+        <label>貸出数量（枚・玉）<input id="rateLoanUnits" type="number" min="0" step="1" placeholder="例：46"></label>
+        <label>貸出金額（円）<input id="rateLoanYen" type="number" min="0" step="1" value="1000"></label>
+      </div>
+      <div class="two">
+        <label>交換数量（枚・玉）<input id="rateExchangeUnits" type="number" min="0" step="1" placeholder="例：50"></label>
+        <label>交換金額（円）<input id="rateExchangeYen" type="number" min="0" step="1" value="1000"></label>
+      </div>
+      <div class="storeRateActions"><button type="button" id="saveStoreRate" class="primary">この条件を保存</button><button type="button" id="deleteStoreRate" class="danger">ユーザー設定を削除</button></div>
+    </div>
+  </div>
   <div class="card">
     <div class="cardhead"><h3>デザイン</h3><span id="themeLabel" class="smallText neutral">ダーク</span></div>
     <p class="settingsNote">スマホでも見やすいよう、ダーク系／ライト系のデザインを切り替えられます。設定はこの端末に保存されます。</p>
@@ -96,7 +122,7 @@
     <h2>分析</h2>
     <div class="filters">
       <label>期間<select id="period"><option value="month">月毎</option><option value="year">年毎</option><option value="all">全期間</option></select><input id="periodMonth" type="month"><select id="periodYear" class="hiddenField"></select></label>
-      <label>集計<select id="group"><option value="day" selected>日別</option><option value="machine">台別</option><option value="genre">ジャンル別</option><option value="store">店舗別</option></select></label><label id="analysisTargetWrap">対象<select id="analysisTarget" class="hiddenField"><option value="">対象を選択してください</option></select></label>
+      <label>集計<select id="group"><option value="day" selected>日別</option><option value="machine">台別</option><option value="genre">ジャンル別</option><option value="store">店舗別</option><option value="rate">レート別</option></select></label><label id="analysisTargetWrap">対象<select id="analysisTarget" class="hiddenField"><option value="">対象を選択してください</option></select></label>
     </div>
   </div>
   <div class="summary">
