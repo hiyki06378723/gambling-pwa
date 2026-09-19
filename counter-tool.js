@@ -47,8 +47,8 @@ function counterRender(){
   counterState.counters.forEach(c=>{
     const wrap=document.createElement('div');wrap.className='counter-wrap';wrap.dataset.id=c.id;
     const count=counterCount(c),rate=counterRate(c),derived=c.type==='derived';
-    wrap.innerHTML=`<div class="counter-swipe-actions"><button type="button" class="counter-edit-btn">${derived?'設定':'編集'}</button><button type="button" class="counter-delete-btn">削除</button></div>
-      <div class="counter-row">
+    wrap.innerHTML=`<div class="counter-swipe-actions"><button type="button" class="counter-delete-btn">削除</button></div>
+      <div class="counter-row ${derived?'counter-derived':''}">
         <button type="button" class="counter-drag-handle" aria-label="並べ替え" title="ドラッグして順番変更">☷</button>
         <div class="counter-main-info" tabindex="0"><div class="counter-name">${counterEsc(c.name)}</div><div class="counter-rate">出現率 ${rate}</div></div>
         <div class="counter-count">${count}</div>
@@ -58,7 +58,6 @@ function counterRender(){
     const info=wrap.querySelector('.counter-main-info');
     info.onclick=()=>derived?counterEditAggregate(c.id):counterStartNameEdit(c.id);
     info.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();info.click()}};
-    wrap.querySelector('.counter-edit-btn').onclick=()=>derived?counterEditAggregate(c.id):counterStartNameEdit(c.id);
     wrap.querySelector('.counter-delete-btn').onclick=()=>counterDelete(c.id);
     if(!derived){wrap.querySelector('.counter-minus').onclick=()=>counterChange(c.id,-1);wrap.querySelector('.counter-plus').onclick=()=>counterChange(c.id,1)}
     counterSetupSwipe(wrap);counterSetupReorder(wrap);
@@ -79,17 +78,33 @@ function counterStartNameEdit(id){
 function counterSetupSwipe(wrap){
   const row=wrap.querySelector('.counter-row');let sx=0,sy=0,moving=false;
   row.addEventListener('touchstart',e=>{if(e.target.closest('.counter-drag-handle')||e.target.closest('button')||e.target.closest('input'))return;const t=e.touches[0];if(!t)return;sx=t.clientX;sy=t.clientY;moving=true},{passive:true});
-  row.addEventListener('touchmove',e=>{if(!moving)return;const t=e.touches[0],dx=t.clientX-sx,dy=t.clientY-sy;if(Math.abs(dy)>Math.abs(dx)+8){moving=false;return}if(dx<-20)row.style.transform=`translateX(${Math.max(dx,-126)}px)`;else if(dx>20)row.style.transform=`translateX(${Math.min(0,-126+dx)}px)`},{passive:true});
-  row.addEventListener('touchend',()=>{if(!moving)return;const m=row.style.transform.match(/-?[\d.]+/);const x=m?Number(m[0]):0;row.style.transform=x<-55?'translateX(-126px)':'translateX(0)';moving=false});
+  row.addEventListener('touchmove',e=>{if(!moving)return;const t=e.touches[0],dx=t.clientX-sx,dy=t.clientY-sy;if(Math.abs(dy)>Math.abs(dx)+8){moving=false;return}if(dx<-20)row.style.transform=`translateX(${Math.max(dx,-68)}px)`;else if(dx>20)row.style.transform=`translateX(${Math.min(0,-68+dx)}px)`},{passive:true});
+  row.addEventListener('touchend',()=>{if(!moving)return;const m=row.style.transform.match(/-?[\d.]+/);const x=m?Number(m[0]):0;row.style.transform=x<-35?'translateX(-68px)':'translateX(0)';moving=false});
 }
 function counterSetupReorder(wrap){
-  const handle=wrap.querySelector('.counter-drag-handle');let active=false;
+  const handle=wrap.querySelector('.counter-drag-handle');let active=false,raf=0;
   handle.addEventListener('pointerdown',e=>{e.preventDefault();active=true;wrap.classList.add('counter-dragging');handle.setPointerCapture?.(e.pointerId);
-    const move=ev=>{if(!active)return;const box=wrap.parentElement,rows=[...box.querySelectorAll('.counter-wrap')].filter(x=>x!==wrap);let target=null;for(const r of rows){const b=r.getBoundingClientRect();if(ev.clientY<b.top+b.height/2){target=r;break}}if(target)box.insertBefore(wrap,target);else box.appendChild(wrap)};
-    const up=()=>{if(!active)return;active=false;wrap.classList.remove('counter-dragging');const ids=[...document.querySelectorAll('#counterRows .counter-wrap')].map(x=>x.dataset.id);counterState.counters=ids.map(id=>counterFind(id)).filter(Boolean);counterRender();document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',up)};
+    const move=ev=>{if(!active)return;
+      const box=wrap.parentElement,rows=[...box.querySelectorAll('.counter-wrap')].filter(x=>x!==wrap);
+      let target=null;
+      for(const r of rows){const b=r.getBoundingClientRect();if(ev.clientY<b.top+b.height/2){target=r;break}}
+      if(target)box.insertBefore(wrap,target);else box.appendChild(wrap);
+      // 画面端まで掴んでいったら自動スクロール
+      const edge=72, speed=14;
+      if(raf)cancelAnimationFrame(raf);
+      const scroll=()=>{
+        if(!active)return;
+        if(ev.clientY<edge)window.scrollBy(0,-speed);
+        else if(ev.clientY>window.innerHeight-edge)window.scrollBy(0,speed);
+        raf=requestAnimationFrame(scroll);
+      };
+      raf=requestAnimationFrame(scroll);
+    };
+    const up=()=>{if(!active)return;active=false;if(raf)cancelAnimationFrame(raf);wrap.classList.remove('counter-dragging');const ids=[...document.querySelectorAll('#counterRows .counter-wrap')].map(x=>x.dataset.id);counterState.counters=ids.map(id=>counterFind(id)).filter(Boolean);counterRender();document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',up)};
     document.addEventListener('pointermove',move);document.addEventListener('pointerup',up,{once:true});
   });
 }
+
 function counterChange(id,n){const c=counterFind(id);if(!c||c.type==='derived')return;c.count=Math.max(0,(Number(c.count)||0)+n);counterRender()}
 function counterChangeGames(n){counterState.games=Math.max(0,counterState.games+n);const el=document.getElementById('counterGames');if(el)el.value=counterState.games;counterRender()}
 function counterAdd(){const el=document.getElementById('counterNewName'),name=el?.value.trim();if(!name)return;counterState.counters.push({id:counterId(),name,count:0,type:'manual',sources:[]});el.value='';counterRender()}
