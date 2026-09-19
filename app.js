@@ -46,7 +46,7 @@ let STORE_DATA={stores:[]};
 let STORE_RATES={version:1,stores:{}};
 let STORE_RATES_CUSTOM={};
 
-const APP_VERSION="8.44";
+const APP_VERSION="8.45";
 
 function loadMachineData(){
   try{
@@ -356,6 +356,11 @@ function netYen(n){
   return "¥"+(rounded).toLocaleString("ja-JP");
 }
 function netDisplayEnabled(){return localStorage.getItem(NET_DISPLAY_KEY)==="hundreds"}
+// 収支を表示単位に切り捨てた値。100円単位設定時は、この値を合計にも使う。
+function displayNetValue(n){
+  const value=Number(n)||0;
+  return netDisplayEnabled()?Math.trunc(value/100)*100:value;
+}
 function applyNetDisplaySetting(){
   const enabled=netDisplayEnabled();
   const el=$("#netDisplayHundreds");
@@ -431,16 +436,17 @@ function renderCalendar(){
  let html="";for(let i=0;i<first;i++)html+='<div class="empty"></div>';
  let total=0,inv=0,wins=0,loss=0;
  for(let d=1;d<=last;d++){
-  let k=`${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`,arr=map[k]||[],n=dayPersonalNet(arr);
-  total+=n;inv+=arr.reduce((a,e)=>a+invYen(e),0);if(n>0)wins++;if(n<0)loss++;
+  let k=`${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`,arr=map[k]||[],n=dayPersonalNet(arr),displayN=displayNetValue(n);
+  // 100円単位表示時は、各日の収支を先に切り捨ててから月合計する。
+  total+=displayN;inv+=arr.reduce((a,e)=>a+invYen(e),0);if(n>0)wins++;if(n<0)loss++;
   let cls=n>0?"win":n<0?"lose":"zero",today=k===dateKey(new Date())?" today":"";
-  html+=`<button class="day ${cls}${today}" data-date="${k}"><span class="date">${d}</span><span class="daynet ${n>0?"pos":n<0?"neg":"neutral"}">${arr.length?netYen(n):"—"}</span></button>`;
+  html+=`<button class="day ${cls}${today}" data-date="${k}"><span class="date">${d}</span><span class="daynet ${n>0?"pos":n<0?"neg":"neutral"}">${arr.length?netYen(displayN):"—"}</span></button>`;
  }
  $("#calendar").innerHTML=html;$("#monthNet").textContent=netYen(total);$("#monthNet").className=total>0?"pos":total<0?"neg":"neutral";$("#winDays").textContent=wins;$("#loseDays").textContent=loss;$("#monthInvest").textContent=yen(inv);
  $$("#calendar .day").forEach(b=>b.onclick=()=>{reportDate=parseDate(b.dataset.date);switchPage("report");renderReport()});
  drawChart($("#calendarChart"),dailySeries(y,m));
 }
-function dailySeries(y,m){let last=new Date(y,m+1,0).getDate(),map={};entries.forEach(e=>{if(e.date.startsWith(`${y}-${String(m+1).padStart(2,"0")}`))(map[e.date]??=[]).push(e)});let cum=0,a=[{label:"開始",value:0}];for(let d=1;d<=last;d++){let k=`${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`,n=dayPersonalNet(map[k]||[]);cum+=n;a.push({label:d,value:cum})}return a}
+function dailySeries(y,m){let last=new Date(y,m+1,0).getDate(),map={};entries.forEach(e=>{if(e.date.startsWith(`${y}-${String(m+1).padStart(2,"0")}`))(map[e.date]??=[]).push(e)});let cum=0,a=[{label:"開始",value:0}];for(let d=1;d<=last;d++){let k=`${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`,n=displayNetValue(dayPersonalNet(map[k]||[]));cum+=n;a.push({label:d,value:cum})}return a}
 function deleteCounterDaily(date,machine){
  const logsKey='gambling-counter-daily-v1';
  let logs={};try{const x=JSON.parse(localStorage.getItem(logsKey)||'{}');if(x&&typeof x==='object')logs=x}catch(e){}
@@ -505,7 +511,7 @@ function updatePeriodControls(){
 }
 
 function inPeriod(e,r){return e.date>=r[0]&&e.date<=r[1]}
-function renderStats(){let r=periodRange($("#period").value),es=entries.filter(e=>inPeriod(e,r)),byDate={};es.forEach(e=>(byDate[e.date]??=[]).push(e));let total=Object.values(byDate).reduce((a,arr)=>a+dayPersonalNet(arr),0),inv=es.reduce((a,e)=>a+invYen(e),0),ret=es.reduce((a,e)=>a+retYen(e),0),win=es.filter(e=>net(e)>0).length;$("#statNet").textContent=netYen(total);$("#statNet").className=total>0?"pos":total<0?"neg":"neutral";$("#statInvest").textContent=yen(inv);$("#statReturn").textContent=yen(ret);$("#statWinRate").textContent=(es.length?(win/es.length*100):0).toFixed(1)+"%";
+function renderStats(){let r=periodRange($("#period").value),es=entries.filter(e=>inPeriod(e,r)),byDate={};es.forEach(e=>(byDate[e.date]??=[]).push(e));let total=Object.values(byDate).reduce((a,arr)=>a+displayNetValue(dayPersonalNet(arr)),0),inv=es.reduce((a,e)=>a+invYen(e),0),ret=es.reduce((a,e)=>a+retYen(e),0),win=es.filter(e=>net(e)>0).length;$("#statNet").textContent=netYen(total);$("#statNet").className=total>0?"pos":total<0?"neg":"neutral";$("#statInvest").textContent=yen(inv);$("#statReturn").textContent=yen(ret);$("#statWinRate").textContent=(es.length?(win/es.length*100):0).toFixed(1)+"%";
  const group=$("#group").value; const target=$("#analysisTarget")?.value||"";
  updateAnalysisTargetOptions(es,group);
  const selectedTarget=$("#analysisTarget")?.value||target;
