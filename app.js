@@ -1,5 +1,19 @@
 const KEY="gambling-log-v3";
 let entries=JSON.parse(localStorage.getItem(KEY)||"[]");
+function normalizeEntry(e){
+  if(!e||typeof e!=="object")return e;
+  const out={...e};
+  if(!Object.prototype.hasOwnProperty.call(out,"investmentCash")&&!Object.prototype.hasOwnProperty.call(out,"investmentHold")){
+    if(out.investType==="hold") { out.investmentCash=0; out.investmentHold=Number(out.invest)||0; }
+    else { out.investmentCash=Number(out.invest)||0; out.investmentHold=0; }
+  }
+  if(!Object.prototype.hasOwnProperty.call(out,"returnCash")&&!Object.prototype.hasOwnProperty.call(out,"returnHold")){
+    if(out.returnType==="hold") { out.returnCash=0; out.returnHold=Number(out.return)||0; }
+    else { out.returnCash=Number(out.return)||0; out.returnHold=0; }
+  }
+  return out;
+}
+entries=Array.isArray(entries)?entries.map(normalizeEntry):[];
 let viewDate=new Date();
 let reportDate=new Date();
 let editingId=null;
@@ -32,7 +46,7 @@ let STORE_DATA={stores:[]};
 let STORE_RATES={version:1,stores:{}};
 let STORE_RATES_CUSTOM={};
 
-const APP_VERSION="8.37.4";
+const APP_VERSION="8.38";
 
 function loadMachineData(){
   try{
@@ -369,8 +383,15 @@ function inputValueToYen(type,value){return type==='cash'?Number(value||0)*1000:
 function calcInputYen(type,value,genre,rate,profile,kind='investment'){return type==='hold'?holdYenFromProfile(value,profile,kind,genre,rate):Number(value||0)*1000}
 function inputStep(type){return type==='cash'?'0.1':'1'}
 function inputPlaceholder(type){return type==='cash'?'例：1 = 1,000円':'金額を入力'}
-function invYen(e){return e.investType==='hold'?holdYenFromProfile(e.invest,e.rateProfile,'investment',e.genre,e.rate):Number(e.invest||0)}
-function retYen(e){return e.returnType==='hold'?holdYenFromProfile(e.return,e.rateProfile,'return',e.genre,e.rate):Number(e.return||0)}
+function sideYen(e,kind){
+ const cash=Number(kind==='investment'?e.investmentCash:e.returnCash)||0;
+ const hold=Number(kind==='investment'?e.investmentHold:e.returnHold)||0;
+ const holdYen=hold?holdYenFromProfile(hold,e.rateProfile,kind,e.genre,e.rate):0;
+ if(holdYen===null)return null;
+ return cash+(holdYen||0);
+}
+function invYen(e){const v=sideYen(e,'investment');return v===null?0:v}
+function retYen(e){const v=sideYen(e,'return');return v===null?0:v}
 const rawNet=e=>retYen(e)-invYen(e);
 function personalNet(e){return rawNet(e)}
 function dayPersonalNet(es){
@@ -378,7 +399,7 @@ function dayPersonalNet(es){
   if(!nori) return es.reduce((a,e)=>a+rawNet(e),0);
   // ノリ打ち時の自分の投資額は「投資」に入力した現金分だけ。持ち玉投資は除外。
   const personalInvest=es.reduce((a,e)=>{
-    return a+(e.investType==='cash'?Number(e.invest||0):0);
+    return a+Number(e.investmentCash||0);
   },0);
   // 精算額は最終的に受け取った（または支払った）金額。収支 = 精算額 - 自分の現金投資額。
   return Number(nori.settlement)-personalInvest;
@@ -427,7 +448,7 @@ function renderReport(){
  const machineArr=Object.entries(groups).sort((a,b)=>b[1].reduce((x,e)=>x+rawNet(e),0)-a[1].reduce((x,e)=>x+rawNet(e),0));
  $("#reportMachines").innerHTML=machineArr.length?machineArr.map(([machine,list])=>{let total=list.reduce((a,e)=>a+rawNet(e),0);return `<button class="reportMachine" data-machine="${escapeHtml(machine)}"><div><b>${escapeHtml(machine)}</b><small>${escapeHtml(list[0].genre)} ・ ${list[0].rate?list[0].rate+"円":""} ・ ${list.length}件</small></div><strong class="${total>=0?"pos":"neg"}">${netYen(total)}</strong></button>`}).join(""):"<div class='emptyState'>この日の記録はありません。<br>右上の「＋ 記録」から追加できます。</div>";
  $$(".reportMachine").forEach(b=>b.onclick=()=>{const m=b.dataset.machine;const first=es.find(e=>e.machine===m);if(first)openForm(key,first.id)});
- $("#reportEntries").innerHTML=es.length?es.map(e=>`<div class="entryCard"><div class="entryTop"><div><b>${escapeHtml(e.machine)}</b><small>${escapeHtml(e.genre)} ・ ${e.rate?e.rate+"円":""} / 投資 ${displayMoneyOrUnit(e.investType,e.invest,e.genre,e.rate)} / 回収 ${displayMoneyOrUnit(e.returnType,e.return,e.genre,e.rate)}</small></div><strong class="${rawNet(e)>=0?"pos":"neg"}">${netYen(rawNet(e))}</strong></div>${e.memo?`<p class="memo">${escapeHtml(e.memo)}</p>`:""}<div class="entryActions"><button onclick="editEntry('${e.id}')">編集</button><button class="danger" onclick="deleteById('${e.id}')">削除</button></div></div>`).join(""):"<div class='emptyState'>記録なし</div>";
+ $("#reportEntries").innerHTML=es.length?es.map(e=>`<div class="entryCard"><div class="entryTop"><div><b>${escapeHtml(e.machine)}</b><small>${escapeHtml(e.genre)} ・ ${e.rate?e.rate+"円":""} / 投資 現金${yen(Number(e.investmentCash)||0)} + 持ち玉${Number(e.investmentHold||0).toLocaleString()}${unitFor(e.genre)} / 回収 現金${yen(Number(e.returnCash)||0)} + 持ち玉${Number(e.returnHold||0).toLocaleString()}${unitFor(e.genre)}</small></div><strong class="${rawNet(e)>=0?"pos":"neg"}">${netYen(rawNet(e))}</strong></div>${e.memo?`<p class="memo">${escapeHtml(e.memo)}</p>`:""}<div class="entryActions"><button onclick="editEntry('${e.id}')">編集</button><button class="danger" onclick="deleteById('${e.id}')">削除</button></div></div>`).join(""):"<div class='emptyState'>記録なし</div>";
 }
 function periodRange(type){
  const now=new Date();
@@ -495,7 +516,7 @@ function renderStatsList(es){
    if(sort==="returnAsc")return retYen(a)-retYen(b)||b.date.localeCompare(a.date);
    return b.date.localeCompare(a.date);
  });
- $("#statsList").innerHTML=list.length?list.map(e=>`<div class="entryCard"><div class="entryTop"><div><b>${escapeHtml(e.machine)}</b><small>${formatDateJP(e.date)} ・ ${escapeHtml(e.genre)} ・ ${e.rate?e.rate+"円":""}</small></div><strong class="${rawNet(e)>=0?"pos":"neg"}">${netYen(rawNet(e))}</strong></div><div class="smallText">投資 ${displayMoneyOrUnit(e.investType,e.invest,e.genre,e.rate)} / 回収 ${displayMoneyOrUnit(e.returnType,e.return,e.genre,e.rate)}</div>${e.memo?`<p class="memo">${escapeHtml(e.memo)}</p>`:""}<div class="entryActions"><button onclick="editEntry('${e.id}')">編集</button><button class="danger" onclick="deleteById('${e.id}')">削除</button></div></div>`).join(""):"<p class='neutral'>データがありません</p>";
+ $("#statsList").innerHTML=list.length?list.map(e=>`<div class="entryCard"><div class="entryTop"><div><b>${escapeHtml(e.machine)}</b><small>${formatDateJP(e.date)} ・ ${escapeHtml(e.genre)} ・ ${e.rate?e.rate+"円":""}</small></div><strong class="${rawNet(e)>=0?"pos":"neg"}">${netYen(rawNet(e))}</strong></div><div class="smallText">投資 現金${yen(Number(e.investmentCash)||0)} + 持ち玉${Number(e.investmentHold||0).toLocaleString()}${unitFor(e.genre)} / 回収 現金${yen(Number(e.returnCash)||0)} + 持ち玉${Number(e.returnHold||0).toLocaleString()}${unitFor(e.genre)}</div>${e.memo?`<p class="memo">${escapeHtml(e.memo)}</p>`:""}<div class="entryActions"><button onclick="editEntry('${e.id}')">編集</button><button class="danger" onclick="deleteById('${e.id}')">削除</button></div></div>`).join(""):"<p class='neutral'>データがありません</p>";
 }
 function rateLabel(rate){const n=Number(rate);if(!Number.isFinite(n))return "未設定";return `${n.toLocaleString("ja-JP",{maximumFractionDigits:4})}円`;}
 function updateAnalysisTargetOptions(es,group){
@@ -671,51 +692,32 @@ function addEntryRow(data={}){
  const wrap=$("#entryRows"),i=Date.now()+Math.floor(Math.random()*1000);
  const div=document.createElement("div");div.className="entryRow card";div.dataset.row=i;
  const genre0=data.genre||'パチスロ', rate0=Number(data.rate)||RATE_OPTIONS[genre0]?.[0]||1;
- const investType0=data.investType||'cash', returnType0=data.returnType||'cash';
- const hasInvest=Object.prototype.hasOwnProperty.call(data,'invest'), hasReturn=Object.prototype.hasOwnProperty.call(data,'return');
- const investInput0=hasInvest?(investType0==='cash'?cashInputValue(data.invest):Number(data.invest??0)):'';
- const returnInput0=hasReturn?(returnType0==='cash'?cashInputValue(data.return):Number(data.return??0)):'';
- div.innerHTML=`<div class="rowHead"><div><span class="entryRowKicker">入力 ${wrap.children.length+1}</span><h3>機種 ${wrap.children.length+1}</h3></div><button type="button" class="removeRow danger" data-row="${i}">削除</button></div><section class="entrySection storeSection"><div class="entrySectionTitle"><span>🏪</span><b>店舗</b><small>どこで遊技したか</small></div>${storePickerHtml()}</section><section class="entrySection conditionSection"><div class="entrySectionTitle"><span>🎰</span><b>遊技条件</b><small>ジャンル・レート</small></div><label>ジャンル<select class="rowGenre" data-row="${i}"><option>パチスロ</option><option>パチンコ</option><option>競馬</option><option>競艇</option><option>その他</option></select></label><label>レート<select class="rowRate" data-row="${i}">${rateOptionsHtml(genre0,rate0)}</select></label><div class="rateProfileInfo"></div><button type="button" class="ghost full editRateProfileBtn">貸出・交換条件を変更</button><div class="rateProfileEditor hiddenField"><div class="two"><label>貸出数量（枚・玉）<input class="rowLoanUnits" type="number" min="0" step="1" placeholder="例：49"></label><label>貸出金額（円）<input class="rowLoanYen" type="number" min="0" step="1" value="1000"></label></div><div class="two"><label>交換数量（枚・玉）<input class="rowExchangeUnits" type="number" min="0" step="1" placeholder="例：50"></label><label>交換金額（円）<input class="rowExchangeYen" type="number" min="0" step="1" value="1000"></label></div><div class="storeRateActions"><button type="button" class="primary saveEntryRateProfile">この条件を保存</button><button type="button" class="danger deleteEntryRateProfile">ユーザー設定を削除</button></div></div></section><section class="entrySection machineSection"><div class="entrySectionTitle"><span>🎮</span><b>機種</b><small>対象を選択</small></div>${rowMachinePickerHtml(i)}</section><section class="entrySection moneySection"><div class="entrySectionTitle"><span>💰</span><b>収支情報</b><small>投資・回収</small></div><div class="two"><label>投資<select class="rowInvestType"><option value="cash">現金（千円）</option><option value="hold">持ち玉（${unitFor(genre0)}）</option></select><input class="rowInvest" data-row="${i}" type="number" min="0" step="${inputStep(investType0)}" placeholder="${inputPlaceholder(investType0)}" value="${investInput0}" required></label><label>回収<select class="rowReturnType"><option value="cash">現金（千円）</option><option value="hold">持ち玉（${unitFor(genre0)}）</option></select><input class="rowReturn" data-row="${i}" type="number" min="0" step="${inputStep(returnType0)}" placeholder="${inputPlaceholder(returnType0)}" value="${returnInput0}" required></label></div><button type="button" class="ghost full carryBtn">← 前の機種の持ち玉を引き継ぐ</button><div class="netPreview">収支（円換算） <strong class="rowNet" data-row="${i}">¥0</strong><small class="rowUnitPreview"></small></div></section><section class="entrySection memoSection"><div class="entrySectionTitle"><span>📝</span><b>メモ</b><small>任意</small></div><label>メモ<textarea class="rowMemo" data-row="${i}" rows="2">${escapeHtml(data.memo||"")}</textarea></label></section>`;
- wrap.appendChild(div);
- fillStorePicker(div,data);
- const genre=div.querySelector('.rowGenre'),rate=div.querySelector('.rowRate'),investType=div.querySelector('.rowInvestType'),returnType=div.querySelector('.rowReturnType');genre.value=genre0;investType.value=data.investType||'cash';returnType.value=data.returnType||'cash';
+ const invCash0=Object.prototype.hasOwnProperty.call(data,'investmentCash')?Number(data.investmentCash||0):((data.investType==='cash')?Number(data.invest||0):0);
+ const invHold0=Object.prototype.hasOwnProperty.call(data,'investmentHold')?Number(data.investmentHold||0):((data.investType==='hold')?Number(data.invest||0):0);
+ const retCash0=Object.prototype.hasOwnProperty.call(data,'returnCash')?Number(data.returnCash||0):((data.returnType==='cash')?Number(data.return||0):0);
+ const retHold0=Object.prototype.hasOwnProperty.call(data,'returnHold')?Number(data.returnHold||0):((data.returnType==='hold')?Number(data.return||0):0);
+ const blankOrCash=v=>v===0?'':String(cashInputValue(v));
+ const blankOrUnit=v=>v===0?'':String(v);
+ div.innerHTML=`<div class="rowHead"><div><span class="entryRowKicker">入力 ${wrap.children.length+1}</span><h3>機種 ${wrap.children.length+1}</h3></div><button type="button" class="removeRow danger" data-row="${i}">削除</button></div><section class="entrySection storeSection"><div class="entrySectionTitle"><span>🏪</span><b>店舗</b><small>どこで遊技したか</small></div>${storePickerHtml()}</section><section class="entrySection conditionSection"><div class="entrySectionTitle"><span>🎰</span><b>遊技条件</b><small>ジャンル・レート</small></div><label>ジャンル<select class="rowGenre" data-row="${i}"><option>パチスロ</option><option>パチンコ</option><option>競馬</option><option>競艇</option><option>その他</option></select></label><label>レート<select class="rowRate" data-row="${i}">${rateOptionsHtml(genre0,rate0)}</select></label><div class="rateProfileInfo"></div><button type="button" class="ghost full editRateProfileBtn">貸出・交換条件を変更</button><div class="rateProfileEditor hiddenField"><div class="two"><label>貸出数量（枚・玉）<input class="rowLoanUnits" type="number" min="0" step="1" placeholder="例：49"></label><label>貸出金額（円）<input class="rowLoanYen" type="number" min="0" step="1" value="1000"></label></div><div class="two"><label>交換数量（枚・玉）<input class="rowExchangeUnits" type="number" min="0" step="1" placeholder="例：50"></label><label>交換金額（円）<input class="rowExchangeYen" type="number" min="0" step="1" value="1000"></label></div><div class="storeRateActions"><button type="button" class="primary saveEntryRateProfile">この条件を保存</button><button type="button" class="danger deleteEntryRateProfile">ユーザー設定を削除</button></div></div></section><section class="entrySection machineSection"><div class="entrySectionTitle"><span>🎮</span><b>機種</b><small>対象を選択</small></div>${rowMachinePickerHtml(i)}</section><section class="entrySection moneySection"><div class="entrySectionTitle"><span>💰</span><b>投資・回収</b><small>現金と持ち玉を分離して記録</small></div><div class="moneySplitHead"><span></span><b>現金（千円）</b><b>持ち玉（${unitFor(genre0)}）</b></div><div class="moneySplitRow"><strong>投資</strong><input class="rowInvestmentCash" data-row="${i}" type="number" min="0" step="0.1" placeholder="例：1 = 1,000円" value="${blankOrCash(invCash0)}"><input class="rowInvestmentHold" data-row="${i}" type="number" min="0" step="1" placeholder="数量" value="${blankOrUnit(invHold0)}"></div><div class="moneySplitRow"><strong>回収</strong><input class="rowReturnCash" data-row="${i}" type="number" min="0" step="0.1" placeholder="例：1 = 1,000円" value="${blankOrCash(retCash0)}"><input class="rowReturnHold" data-row="${i}" type="number" min="0" step="1" placeholder="数量" value="${blankOrUnit(retHold0)}"></div><button type="button" class="ghost full carryBtn">← 前の機種の持ち玉を引き継ぐ</button><div class="netPreview">収支（円換算） <strong class="rowNet" data-row="${i}">¥0</strong><small class="rowUnitPreview"></small></div></section><section class="entrySection memoSection"><div class="entrySectionTitle"><span>📝</span><b>メモ</b><small>任意</small></div><label>メモ<textarea class="rowMemo" data-row="${i}" rows="2">${escapeHtml(data.memo||"")}</textarea></label></section>`;
+ wrap.appendChild(div); fillStorePicker(div,data);
+ const genre=div.querySelector('.rowGenre'),rate=div.querySelector('.rowRate');
+ genre.value=genre0;
  const search=div.querySelector('.rowSearch'),select=div.querySelector('.rowMachine'),custom=div.querySelector('.rowCustom');
- function refreshRate(){const old=rate.value;rate.innerHTML=rateOptionsHtml(genre.value,old);if(!rate.value)rate.value=RATE_OPTIONS[genre.value]?.[0]||1;const u=unitFor(genre.value);div.querySelector('.rowInvestType option[value="cash"]').textContent='現金（千円）';div.querySelector('.rowReturnType option[value="cash"]').textContent='現金（千円）';div.querySelector('.rowInvestType option[value="hold"]').textContent=`持ち玉（${u}）`;div.querySelector('.rowReturnType option[value="hold"]').textContent=`持ち玉（${u}）`;const inv=div.querySelector('.rowInvest'),ret=div.querySelector('.rowReturn');inv.step=inputStep(investType.value);ret.step=inputStep(returnType.value);inv.placeholder=inputPlaceholder(investType.value);ret.placeholder=inputPlaceholder(returnType.value);refreshEntryRateInfo(div);}
- function populate(){const query=search.value.trim();const list=query?machineOptions(genre.value,query):[];const current=div.dataset.machine||data.machine||select.value;const suggestions=div.querySelector('.machineSuggestions');select.innerHTML='<option value="">機種を選択してください</option>'+list.map(x=>`<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join("");if(query&&list.length){const limited=list.slice(0,10);suggestions.innerHTML=limited.map((x,n)=>`<button type="button" class="machineSuggestion" data-machine="${escapeHtml(x)}"><span>${escapeHtml(x)}</span><small>${escapeHtml(genre.value)}</small></button>`).join("");if(list.length>10)suggestions.insertAdjacentHTML('beforeend',`<div class="suggestionMore">${list.length-10}件は入力を続けるとさらに絞り込めます</div>`)}else if(query){suggestions.innerHTML='<div class="suggestionEmpty">該当する機種がありません</div>'}else{suggestions.innerHTML=''}suggestions.querySelectorAll('.machineSuggestion').forEach(b=>b.onclick=()=>{const value=b.dataset.machine;div.dataset.machine=value;search.value=value;select.value=value;custom.value='';custom.classList.add('hiddenField');suggestions.innerHTML='';updateRowPreview(div)});if(list.includes(current)){select.value=current;custom.classList.add('hiddenField');div.dataset.machine=current}else if(current){custom.classList.remove('hiddenField');custom.value=current;select.value='';div.dataset.machine=current}renderRowRecent(div);updateRowPreview(div)}
- genre.onchange=()=>{div.dataset.machine='';search.value='';custom.value='';custom.classList.add('hiddenField');refreshRate();refreshEntryRateInfo(div);populate();updateBatchTotal()};rate.onchange=()=>{refreshEntryRateInfo(div);updateRowPreview(div);updateBatchTotal()};search.oninput=populate;div.querySelector('.clearRowSearch').onclick=()=>{search.value='';div.dataset.machine='';select.value='';populate();search.focus()};select.onchange=()=>{div.dataset.machine=select.value;search.value=select.value;custom.value='';custom.classList.add('hiddenField');div.querySelector('.machineSuggestions').innerHTML='';updateRowPreview(div)};
+ const inputs=[...div.querySelectorAll('.rowInvestmentCash,.rowInvestmentHold,.rowReturnCash,.rowReturnHold')];
+ function refreshRate(){const old=rate.value;rate.innerHTML=rateOptionsHtml(genre.value,old);if(!rate.value)rate.value=RATE_OPTIONS[genre.value]?.[0]||1;const u=unitFor(genre.value);div.querySelector('.moneySplitHead').innerHTML=`<span></span><b>現金（千円）</b><b>持ち玉（${u}）</b>`;div.querySelector('.rowInvestmentHold').placeholder=`${u}数量`;div.querySelector('.rowReturnHold').placeholder=`${u}数量`;refreshEntryRateInfo(div);}
+ function populate(){const query=search.value.trim(),list=query?machineOptions(genre.value,query):[],current=div.dataset.machine||data.machine||select.value,suggestions=div.querySelector('.machineSuggestions');select.innerHTML='<option value="">機種を選択してください</option>'+list.map(x=>`<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join("");if(query&&list.length){const limited=list.slice(0,10);suggestions.innerHTML=limited.map(x=>`<button type="button" class="machineSuggestion" data-machine="${escapeHtml(x)}"><span>${escapeHtml(x)}</span><small>${escapeHtml(genre.value)}</small></button>`).join("");if(list.length>10)suggestions.insertAdjacentHTML('beforeend',`<div class="suggestionMore">${list.length-10}件は入力を続けるとさらに絞り込めます</div>`)}else if(query)suggestions.innerHTML='<div class="suggestionEmpty">該当する機種がありません</div>';else suggestions.innerHTML='';suggestions.querySelectorAll('.machineSuggestion').forEach(b=>b.onclick=()=>{const value=b.dataset.machine;div.dataset.machine=value;search.value=value;select.value=value;custom.value='';custom.classList.add('hiddenField');suggestions.innerHTML='';updateRowPreview(div)});if(list.includes(current)){select.value=current;custom.classList.add('hiddenField');div.dataset.machine=current}else if(current){custom.classList.remove('hiddenField');custom.value=current;select.value='';div.dataset.machine=current}renderRowRecent(div);updateRowPreview(div)}
+ genre.onchange=()=>{div.dataset.machine='';search.value='';custom.value='';custom.classList.add('hiddenField');refreshRate();populate();updateBatchTotal()};
+ rate.onchange=()=>{refreshEntryRateInfo(div);updateRowPreview(div);updateBatchTotal()};
+ search.oninput=populate;
+ div.querySelector('.clearRowSearch').onclick=()=>{search.value='';div.dataset.machine='';select.value='';populate();search.focus()};
+ select.onchange=()=>{div.dataset.machine=select.value;search.value=select.value;custom.value='';custom.classList.add('hiddenField');div.querySelector('.machineSuggestions').innerHTML='';updateRowPreview(div)};
  div.querySelector('.customRowBtn').onclick=()=>{custom.classList.toggle('hiddenField');if(!custom.classList.contains('hiddenField')){select.value='';div.dataset.machine='';custom.focus()}else{custom.value='';updateRowPreview(div)}};custom.oninput=()=>{div.dataset.machine=custom.value.trim();updateRowPreview(div)};
- div.querySelector('.carryBtn').onclick=()=>{const prev=div.previousElementSibling;if(!prev)return alert('前の機種がありません');const pType=prev.querySelector('.rowReturnType').value,pVal=Number(prev.querySelector('.rowReturn').value||0),pGenre=prev.querySelector('.rowGenre').value,pRate=Number(prev.querySelector('.rowRate').value||1);if(pType!=='hold')return alert('前の機種の回収が持ち玉になっていません');if(pGenre!==genre.value){genre.value=pGenre;refreshRate();populate()}rate.value=pRate;investType.value='hold';const input=div.querySelector('.rowInvest');input.value=pVal;input.dataset.lastType='hold';input.step='1';updateRowPreview(div);updateBatchTotal()};
+ div.querySelector('.carryBtn').onclick=()=>{const prev=div.previousElementSibling;if(!prev)return alert('前の機種がありません');const p=prev.querySelector('.rowReturnHold');if(!p)return;const v=p.value.trim();if(!v)return alert('前の機種の回収「持ち玉」が入力されていません');const pg=prev.querySelector('.rowGenre').value,pr=Number(prev.querySelector('.rowRate').value||1);if(pg!==genre.value){genre.value=pg;refreshRate();populate()}rate.value=String(pr);div.querySelector('.rowInvestmentHold').value=v;updateRowPreview(div);updateBatchTotal()};
  div.querySelector('.removeRow').onclick=()=>{if(wrap.children.length<=1){alert('少なくとも1台は入力してください');return}div.remove();renumberRows();updateBatchTotal()};
- [investType,returnType].forEach(sel=>sel.onchange=()=>{
-   const input=sel===investType?div.querySelector('.rowInvest'):div.querySelector('.rowReturn');
-   const oldType=input.dataset.lastType||sel.value, newType=sel.value, rateNow=Number(rate.value||1), raw=input.value.trim();
-   if(raw!=='' && oldType!==newType){
-     const profile=getStoreRateProfile(collectStore(div),genre.value,rateNow);
-     const yen=calcInputYen(oldType,raw,genre.value,rateNow,profile,sel===investType?'investment':'return');
-     if(newType==='cash') input.value=cashInputValue(yen); else { const denom=sel===investType?Number(profile?.loanUnits)||rateNow:Number(profile?.exchangeUnits)||rateNow; const unitYen=sel===investType?Number(profile?.loanYen)||1000:Number(profile?.exchangeYen)||1000; input.value=String(denom&&unitYen?yen/(unitYen/denom):yen/rateNow); }
-   }
-   input.step=inputStep(newType);input.placeholder=inputPlaceholder(newType);input.dataset.lastType=newType;
-   updateRowPreview(div);updateBatchTotal();
- });
- div.querySelectorAll('.rowInvest,.rowReturn').forEach(x=>x.oninput=x.onchange=()=>{updateRowPreview(div);updateBatchTotal()});
- refreshRate();setupEntryRateEditor(div);investType.querySelector('option[value="cash"]').textContent='現金（千円）';returnType.querySelector('option[value="cash"]').textContent='現金（千円）';div.querySelector('.rowInvest').dataset.lastType=investType.value;div.querySelector('.rowReturn').dataset.lastType=returnType.value;
- // 編集時は既存の機種名を検索欄へ先に設定してから候補を生成する。
- // これにより、検索欄が空のままselectに存在しない値を設定してしまう問題を防ぐ。
- if(data.machine){
-   div.dataset.machine=data.machine;
-   if(machineOptions(genre.value).includes(data.machine)){
-     search.value=data.machine;
-     custom.value='';
-     custom.classList.add('hiddenField');
-   }else{
-     search.value='';
-     custom.classList.remove('hiddenField');
-     custom.value=data.machine;
-   }
- }
- populate();
- refreshEntryRateInfo(div);
- updateRowPreview(div);updateBatchTotal();
+ inputs.forEach(x=>x.oninput=x.onchange=()=>{updateRowPreview(div);updateBatchTotal()});
+ refreshRate();setupEntryRateEditor(div);
+ if(data.machine){div.dataset.machine=data.machine;if(machineOptions(genre.value).includes(data.machine)){search.value=data.machine;custom.value='';custom.classList.add('hiddenField')}else{search.value='';custom.classList.remove('hiddenField');custom.value=data.machine}}
+ populate();refreshEntryRateInfo(div);updateRowPreview(div);updateBatchTotal();
 }
 function renderRowRecent(div){
  const wrap=div.querySelector('.recentMachines'),rs=recentMachines(div.querySelector('.rowGenre')?.value);
@@ -731,38 +733,34 @@ function renderRowRecent(div){
    q.dispatchEvent(new Event('input',{bubbles:true}));
  });
 }
-function updateRowPreview(div){const genre=div.querySelector('.rowGenre').value,rate=Number(div.querySelector('.rowRate').value||1),profile=getStoreRateProfile(collectStore(div),genre,rate),it=div.querySelector('.rowInvestType').value,rt=div.querySelector('.rowReturnType').value,inv=calcInputYen(it,div.querySelector('.rowInvest').value,genre,rate,profile,'investment'),ret=calcInputYen(rt,div.querySelector('.rowReturn').value,genre,rate,profile,'return');const missing=(it==='hold'&&inv===null)||(rt==='hold'&&ret===null);const n=missing?0:ret-inv;const el=div.querySelector('.rowNet');el.textContent=missing?'条件未設定':netYen(n);el.className='rowNet '+(missing?'neutral':n>0?'pos':n<0?'neg':'neutral');div.querySelector('.rowUnitPreview').textContent=missing?'持ち玉／持ちメダルの換算条件を設定してください':`投資 ${displayMoneyOrUnit(it,inv??0,genre,rate)} ／ 回収 ${displayMoneyOrUnit(rt,ret??0,genre,rate)}`}
+function rowInputYen(div,kind){
+ const genre=div.querySelector('.rowGenre').value,rate=Number(div.querySelector('.rowRate').value||1),profile=getStoreRateProfile(collectStore(div),genre,rate);
+ const cash=Number(div.querySelector(kind==='investment'?'.rowInvestmentCash':'.rowReturnCash').value||0)*1000;
+ const hold=Number(div.querySelector(kind==='investment'?'.rowInvestmentHold':'.rowReturnHold').value||0);
+ if(hold){const v=holdYenFromProfile(hold,profile,kind,genre,rate);if(v===null)return null;return cash+v;}
+ return cash;
+}
+function updateRowPreview(div){const inv=rowInputYen(div,'investment'),ret=rowInputYen(div,'return'),missing=inv===null||ret===null,n=missing?0:ret-inv,el=div.querySelector('.rowNet');el.textContent=missing?'条件未設定':netYen(n);el.className='rowNet '+(missing?'neutral':n>0?'pos':n<0?'neg':'neutral');div.querySelector('.rowUnitPreview').textContent=missing?'持ち玉／持ちメダルを入力した場合は貸出・交換条件が必要':`投資 現金 ${yen(Number(div.querySelector('.rowInvestmentCash').value||0)*1000)} + 持ち玉 ${Number(div.querySelector('.rowInvestmentHold').value||0).toLocaleString()}${unitFor(div.querySelector('.rowGenre').value)} ／ 回収 現金 ${yen(Number(div.querySelector('.rowReturnCash').value||0)*1000)} + 持ち玉 ${Number(div.querySelector('.rowReturnHold').value||0).toLocaleString()}${unitFor(div.querySelector('.rowGenre').value)}`}
 function updateBatchTotal(){
  let inv=0,ret=0,raw=0,personalInv=0,missing=false;
- $$(`#entryRows .entryRow`).forEach(d=>{
-   const genre=d.querySelector('.rowGenre').value,rate=Number(d.querySelector('.rowRate').value||1),profile=getStoreRateProfile(collectStore(d),genre,rate);
-   const it=d.querySelector('.rowInvestType').value,rt=d.querySelector('.rowReturnType').value;
-   const i=calcInputYen(it,d.querySelector('.rowInvest').value,genre,rate,profile,'investment');
-   const r=calcInputYen(rt,d.querySelector('.rowReturn').value,genre,rate,profile,'return');
-   if(i===null||r===null)missing=true;
-   else {inv+=i;ret+=r;raw+=r-i;}
-   // ノリ打ちの自分の投資額は「投資=現金」の入力だけを合計。持ち玉投資は0円扱い。
-   if(it==='cash') personalInv+=i;
- });
+ $$('#entryRows .entryRow').forEach(d=>{const i=rowInputYen(d,'investment'),r=rowInputYen(d,'return');if(i===null||r===null)missing=true;else{inv+=i;ret+=r;raw+=r-i}personalInv+=Number(d.querySelector('.rowInvestmentCash').value||0)*1000});
  const nori=!!$("#batchNori")?.checked;
- if(missing){
-   $("#batchNet").textContent='条件未設定';
-   $("#batchNet").className='neutral';
-   $("#batchInvest").textContent='—';
-   $("#batchReturn").textContent='—';
-   return;
- }
- const settlementRaw=$("#batchSettlement")?.value.trim()||'';
- const settlement=settlementRaw===''?0:Number(settlementRaw);
- const n=nori?settlement-personalInv:raw;
- $("#batchInvest").textContent=yen(nori?personalInv:inv);
- $("#batchInvestLabel").textContent=nori?'自分の投資額（現金のみ）':'合計投資';
- $("#batchReturn").textContent=yen(ret);
- $("#batchNet").textContent=netYen(n);
- $("#batchNet").className=n>0?'pos':n<0?'neg':'neutral';
+ if(missing){$("#batchNet").textContent='条件未設定';$("#batchNet").className='neutral';$("#batchInvest").textContent='—';$("#batchReturn").textContent='—';return}
+ const settlementRaw=$("#batchSettlement")?.value.trim()||'',settlement=settlementRaw===''?0:Number(settlementRaw),n=nori?settlement-personalInv:raw;
+ $("#batchInvest").textContent=yen(nori?personalInv:inv);$("#batchInvestLabel").textContent=nori?'自分の投資額（現金のみ）':'合計投資';$("#batchReturn").textContent=yen(ret);$("#batchNet").textContent=netYen(n);$("#batchNet").className=n>0?'pos':n<0?'neg':'neutral';
 }
 function renumberRows(){$$('#entryRows .entryRow').forEach((d,i)=>d.querySelector('.rowHead h3').textContent=`機種 ${i+1}`)}
-function collectRow(div){const custom=div.querySelector('.rowCustom'),select=div.querySelector('.rowMachine');const machine=custom.classList.contains('hiddenField')?(select.value||div.dataset.machine||''):custom.value.trim();const it=div.querySelector('.rowInvestType').value,rt=div.querySelector('.rowReturnType').value;const st=collectStore(div);const genre=div.querySelector('.rowGenre').value,rate=Number(div.querySelector('.rowRate').value||1),profile=getStoreRateProfile(st,genre,rate)||data.rateProfile||null;const rawInvest=Number(div.querySelector('.rowInvest').value||0),rawReturn=Number(div.querySelector('.rowReturn').value||0);return {date:$("#entryDate").value,genre,rate,machine,investType:it,returnType:rt,invest:it==='cash'?rawInvest*1000:rawInvest,return:rt==='cash'?rawReturn*1000:rawReturn,memo:div.querySelector('.rowMemo').value.trim(),prefecture:st?.prefecture||"",city:st?.city||"",store:st?.store||"",storeUrl:st?.url||"",rateProfile:profile?{loanUnits:Number(profile.loanUnits)||0,loanYen:Number(profile.loanYen)||1000,exchangeUnits:Number(profile.exchangeUnits)||0,exchangeYen:Number(profile.exchangeYen)||1000}:null}}
+function collectRow(div){
+ const custom=div.querySelector('.rowCustom'),select=div.querySelector('.rowMachine');
+ const machine=custom.classList.contains('hiddenField')?(select.value||div.dataset.machine||''):custom.value.trim();
+ const st=collectStore(div),genre=div.querySelector('.rowGenre').value,rate=Number(div.querySelector('.rowRate').value||1);
+ const profile=getStoreRateProfile(st,genre,rate)||null;
+ const investmentCash=Number(div.querySelector('.rowInvestmentCash').value||0)*1000;
+ const investmentHold=Number(div.querySelector('.rowInvestmentHold').value||0);
+ const returnCash=Number(div.querySelector('.rowReturnCash').value||0)*1000;
+ const returnHold=Number(div.querySelector('.rowReturnHold').value||0);
+ return {date:$("#entryDate").value,genre,rate,machine,investmentCash,investmentHold,returnCash,returnHold,memo:div.querySelector('.rowMemo').value.trim(),prefecture:st?.prefecture||"",city:st?.city||"",store:st?.store||"",storeUrl:st?.url||"",rateProfile:profile?{loanUnits:Number(profile.loanUnits)||0,loanYen:Number(profile.loanYen)||1000,exchangeUnits:Number(profile.exchangeUnits)||0,exchangeYen:Number(profile.exchangeYen)||1000}:null};
+}
 function openForm(date=dateKey(new Date()),id=null){
  const dialog=$("#entryDialog");
  if(!dialog){alert("入力画面の読み込みに失敗しました。ページを再読み込みしてください。");return;}
@@ -796,9 +794,9 @@ $("#entryForm").onsubmit=e=>{
  const objs=rows.map(collectRow);
  if(objs.some(x=>!x.date)){alert('日付を入力してください');return}
  if(objs.some(x=>!x.machine)){alert('機種・対象を選択または入力してください');return}
- const missingRateProfile=rows.some(d=>{const genre=d.querySelector('.rowGenre').value,rate=Number(d.querySelector('.rowRate').value||1),profile=getStoreRateProfile(collectStore(d),genre,rate);return (d.querySelector('.rowInvestType').value==='hold'&&!(profile?.loanUnits>0&&profile?.loanYen>0))||(d.querySelector('.rowReturnType').value==='hold'&&!(profile?.exchangeUnits>0&&profile?.exchangeYen>0));});
+ const missingRateProfile=rows.some(d=>{const genre=d.querySelector('.rowGenre').value,rate=Number(d.querySelector('.rowRate').value||1),profile=getStoreRateProfile(collectStore(d),genre,rate);const ih=Number(d.querySelector('.rowInvestmentHold').value||0),rh=Number(d.querySelector('.rowReturnHold').value||0);return (ih>0&&!(profile?.loanUnits>0&&profile?.loanYen>0))||(rh>0&&!(profile?.exchangeUnits>0&&profile?.exchangeYen>0));});
  if(missingRateProfile){alert('持ち玉・持ちメダルを使用する場合は、店舗＋ジャンル＋レートの貸出・交換条件を設定してください。');return}
- if(objs.some(x=>!Number.isFinite(x.invest)||!Number.isFinite(x.return)||x.invest<0||x.return<0)){alert('投資・回収は0以上の数値を入力してください');return}
+ if(objs.some(x=>[x.investmentCash,x.investmentHold,x.returnCash,x.returnHold].some(v=>!Number.isFinite(v)||v<0))){alert('投資・回収は0以上の数値を入力してください');return}
  const nori=!!$("#batchNori")?.checked;
  const settlementRaw=$("#batchSettlement")?.value.trim()||'';
  if(nori && (settlementRaw==='' || !Number.isFinite(Number(settlementRaw)))){alert('ノリ打ちの場合は「自分の最終精算額」を入力してください');$("#batchSettlement").focus();return}

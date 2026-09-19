@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""P-WORLDの「市区郡から探す」をたどって店舗マスターを生成するPC用ツール。Ver8.37.3
+"""P-WORLDの「市区郡から探す」をたどって店舗マスターを生成するPC用ツール。Ver8.28
 
 住所の解析は行いません。
 1. 各都道府県トップの「市区郡から探す」から市区郡ページのURLを取得
@@ -308,7 +308,7 @@ def main():
     # 通常は一覧ページで貸出条件が取れなかった店舗だけ詳細ページを確認する。
     verify_details = '--verify-details' in sys.argv[1:]
     print('============================================', flush=True)
-    print('  P-WORLD 店舗データ更新 Ver8.37.3', flush=True)
+    print('  P-WORLD 店舗データ更新 Ver8.28', flush=True)
     print('============================================', flush=True)
     print('「都道府県 → 市区郡 → 店舗一覧」の順で店舗と貸出条件を取得します。', flush=True)
     if verify_details:
